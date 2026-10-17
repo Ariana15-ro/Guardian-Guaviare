@@ -1,0 +1,70 @@
+import { TreePine, Flame, Waves, AlertTriangle, MapPin, Bell } from 'lucide-react';
+import { DashboardStats } from '../types';
+
+interface Props {
+  stats: DashboardStats;
+}
+
+export function StatsCards({ stats }: Props) {
+  const cards = [
+    {
+      label: 'Eventos Activos',
+      value: stats.totalActivos,
+      icon: AlertTriangle,
+      color: 'from-amber-500/20 to-amber-600/5 border-amber-500/30',
+      iconColor: 'text-amber-400',
+    },
+    {
+      label: 'Deforestación',
+      value: stats.deforestacion,
+      icon: TreePine,
+      color: 'from-orange-500/20 to-orange-600/5 border-orange-500/30',
+      iconColor: 'text-orange-400',
+    },
+    {
+      label: 'Incendios',
+      value: stats.incendios,
+      icon: Flame,
+      color: 'from-red-500/20 to-red-600/5 border-red-500/30',
+      iconColor: 'text-red-400',
+    },
+    {
+      label: 'Niveles de Río',
+      value: stats.nivelesRio,
+      icon: Waves,
+      color: 'from-blue-500/20 to-blue-600/5 border-blue-500/30',
+      iconColor: 'text-blue-400',
+    },
+    {
+      label: 'Hectáreas estimadas',
+      value: stats.hectareasEstimadas.toFixed(1),
+      icon: MapPin,
+      color: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/30',
+      iconColor: 'text-emerald-400',
+    },
+    {
+      label: 'Alertas hoy',
+      value: stats.alertasHoy,
+      icon: Bell,
+      color: 'from-violet-500/20 to-violet-600/5 border-violet-500/30',
+      iconColor: 'text-violet-400',
+    },
+  ];
+
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+      {cards.map((card) => (
+        <div
+          key={card.label}
+          className={`bg-gradient-to-br ${card.color} border rounded-xl p-4 backdrop-blur-sm`}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <card.icon className={`w-5 h-5 ${card.iconColor}`} />
+          </div>
+          <div className="text-2xl font-bold text-white tracking-tight">{card.value}</div>
+          <div className="text-xs text-slate-400 mt-1">{card.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
