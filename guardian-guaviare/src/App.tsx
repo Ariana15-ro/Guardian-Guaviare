@@ -10,6 +10,7 @@ import { Filters } from './components/Filters';
 import { AlertModal } from './components/AlertModal';
 import { AlertLogPanel } from './components/AlertLogPanel';
 import { Shield, Flame, TreePine, Waves, Activity, RotateCcw, Volume2 } from 'lucide-react';
+import { fetchFuegos, type FuegoReal } from './services/fuegosApi';
 
 const TrendCharts = lazy(() =>
   import('./components/TrendCharts').then((module) => ({ default: module.TrendCharts }))
@@ -29,12 +30,51 @@ interface LiveDashboardState {
   readings: TrendReading[];
 }
 
-function computeStats(events: SensorEvent[], alerts: AlertLog[]): DashboardStats {
+type DataMode = 'real' | 'demo';
+
+const MUNICIPALITIES = [
+  { name: 'San José del Guaviare', lat: 2.5728, lon: -72.6459 },
+  { name: 'Calamar', lat: 1.9597, lon: -72.6531 },
+  { name: 'El Retorno', lat: 2.3303, lon: -72.6278 },
+  { name: 'Miraflores', lat: 1.3361, lon: -71.9511 },
+];
+
+function toFireEvent(fire: FuegoReal): SensorEvent {
+  const municipality = MUNICIPALITIES.reduce((nearest, current) => {
+    const currentDistance = (current.lat - fire.lat) ** 2 + (current.lon - fire.lon) ** 2;
+    const nearestDistance = (nearest.lat - fire.lat) ** 2 + (nearest.lon - fire.lon) ** 2;
+    return currentDistance < nearestDistance ? current : nearest;
+  }).name;
+  const confidenceLabel = fire.confidence === 'h' ? 'alta' : fire.confidence === 'n' ? 'nominal' : 'baja';
+
+  return {
+    id: fire.id,
+    type: 'incendio',
+    severity: fire.confidence === 'h' ? 'critica' : fire.confidence === 'n' ? 'alta' : 'media',
+    lat: fire.lat,
+    lng: fire.lon,
+    title: `Foco de calor · ${municipality}`,
+    description: `Confianza ${confidenceLabel}. FRP: ${fire.frp} MW. Detección VIIRS del satélite ${fire.satellite}.`,
+    timestamp: fire.timestamp,
+    value: fire.frp,
+    municipality,
+    status: 'activo',
+    source: 'real',
+    confidence: fire.confidence,
+    frp: fire.frp,
+    localTime: fire.localTime,
+    satellite: fire.satellite,
+  };
+}
+
+function computeStats(events: SensorEvent[], alerts: AlertLog[], mode: DataMode): DashboardStats {
   const activos = events.filter((e) => e.status === 'activo');
   return {
     totalActivos: activos.length,
     deforestacion: events.filter((e) => e.type === 'deforestacion' && e.status === 'activo').length,
-    incendios: events.filter((e) => e.type === 'incendio' && e.status === 'activo').length,
+    incendios: events.filter(
+      (e) => e.type === 'incendio' && e.status === 'activo' && (mode === 'demo' || e.source === 'real')
+    ).length,
     nivelesRio: events.filter((e) => e.type === 'nivel_rio' && e.status === 'activo').length,
     hectareasEstimadas: events
       .filter((e) => e.type === 'deforestacion')
@@ -76,8 +116,14 @@ async function playNotificationSound(): Promise<void> {
 
 export default function App() {
   const [events, setEvents] = useState<SensorEvent[]>(() => generateInitialEvents(52));
+  const [mode, setMode] = useState<DataMode>('real');
+  const [fuegos, setFuegos] = useState<FuegoReal[]>([]);
+  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [fuegosError, setFuegosError] = useState<string | null>(null);
+  const [fuegosLoading, setFuegosLoading] = useState(true);
   const [liveState, setLiveState] = useState<LiveDashboardState>(() => {
     const indicators = generateLiveIndicators();
+    indicators.heatSpots = 0;
     return {
       indicators,
       readings: [{ timestamp: Date.now(), riverLevel: indicators.riverLevel, heatSpots: indicators.heatSpots }],
@@ -99,16 +145,69 @@ export default function App() {
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  // Auto-generate new events every 25-40 seconds to simulate "live" sensors
+  const fuegoEvents = useMemo(
+    () => fuegos
+      .filter((fire) => {
+        const age = Date.now() - Date.parse(fire.timestamp);
+        return age >= 0 && age <= 24 * 60 * 60 * 1000;
+      })
+      .map(toFireEvent),
+    [fuegos]
+  );
+  const fuegoCount = fuegoEvents.length;
+  const simulationId = fireSimulation?.event.id;
+  const visibleEvents = useMemo(() => {
+    if (mode === 'demo') return events;
+    const syntheticEvents = events.filter(
+      (event) => event.type !== 'incendio' || event.id === simulationId
+    );
+    return [...fuegoEvents, ...syntheticEvents];
+  }, [events, fuegoEvents, mode, simulationId]);
+
+  const refreshFuegos = useCallback(async () => {
+    try {
+      const response = await fetchFuegos();
+      setFuegos(response.hotspots);
+      setFetchedAt(response.fetchedAt);
+      setFuegosError(null);
+      setFuegosLoading(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Error de conexión con NASA FIRMS.';
+      setFuegosError(message);
+      setFuegosLoading(false);
+      setMode('demo');
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshFuegos();
+    const interval = window.setInterval(() => void refreshFuegos(), 10 * 60 * 1000);
+    return () => window.clearInterval(interval);
+  }, [refreshFuegos]);
+
+  useEffect(() => {
+    if (mode !== 'real' || fuegosLoading) return;
+    setLiveState((previous) => ({
+      indicators: { ...previous.indicators, heatSpots: fuegoCount },
+      readings: [
+        ...previous.readings,
+        { timestamp: Date.now(), riverLevel: previous.indicators.riverLevel, heatSpots: fuegoCount },
+      ].slice(-20),
+    }));
+  }, [fuegoCount, fuegosLoading, mode]);
+
+  // New synthetic activity remains limited to river and deforestation in real mode.
   useEffect(() => {
     const interval = setInterval(() => {
       if (Math.random() > 0.4) {
-        const newEvent = generateEvent();
+        const newEvent = mode === 'real'
+          ? generateEvent(Math.random() > 0.5 ? 'deforestacion' : 'nivel_rio')
+          : generateEvent();
         setEvents((prev) => [newEvent, ...prev].slice(0, 120));
       }
     }, 28000 + Math.random() * 12000);
     return () => clearInterval(interval);
-  }, []);
+  }, [mode]);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
@@ -118,9 +217,13 @@ export default function App() {
       if (cancelled) return;
       setLiveState((previous) => {
         const indicators = generateLiveIndicators(previous.indicators);
+        const heatSpots = mode === 'real'
+          ? fuegoCount
+          : indicators.heatSpots;
+        indicators.heatSpots = heatSpots;
         const readings = [
           ...previous.readings,
-          { timestamp: Date.now(), riverLevel: indicators.riverLevel, heatSpots: indicators.heatSpots },
+          { timestamp: Date.now(), riverLevel: indicators.riverLevel, heatSpots },
         ].slice(-20);
         return { indicators, readings };
       });
@@ -132,18 +235,27 @@ export default function App() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, []);
+  }, [mode, fuegoCount]);
+
+  const focoQuery = useMemo(() => new URLSearchParams(window.location.search).get('foco'), []);
+  useEffect(() => {
+    if (!focoQuery || !fuegoEvents.some((event) => event.id === focoQuery)) return;
+    setTypeFilter('all');
+    setSeverityFilter('all');
+    setStatusFilter('all');
+    setSelectedId(focoQuery);
+  }, [focoQuery, fuegoEvents]);
 
   const filtered = useMemo(() => {
-    return events.filter((e) => {
+    return visibleEvents.filter((e) => {
       if (typeFilter !== 'all' && e.type !== typeFilter) return false;
       if (severityFilter !== 'all' && e.severity !== severityFilter) return false;
       if (statusFilter !== 'all' && e.status !== statusFilter) return false;
       return true;
     });
-  }, [events, typeFilter, severityFilter, statusFilter]);
+  }, [visibleEvents, typeFilter, severityFilter, statusFilter]);
 
-  const stats = useMemo(() => computeStats(events, alerts), [events, alerts]);
+  const stats = useMemo(() => computeStats(visibleEvents, alerts, mode), [visibleEvents, alerts, mode]);
 
   const handleAlert = useCallback((event: SensorEvent) => {
     setAlertEvent(event);
@@ -188,7 +300,10 @@ export default function App() {
     setSelectedId(event.id);
     setFireSimulation({ event, baseline });
     setLiveState((previous) => {
-      const indicators = { ...previous.indicators, heatSpots: previous.indicators.heatSpots + 1 };
+      const indicators = {
+        ...previous.indicators,
+        heatSpots: mode === 'real' ? fuegoCount : previous.indicators.heatSpots + 1,
+      };
       const readings = [
         ...previous.readings,
         { timestamp: Date.now(), riverLevel: indicators.riverLevel, heatSpots: indicators.heatSpots },
@@ -252,7 +367,7 @@ export default function App() {
                 aria-disabled={fireSimulation !== null}
               >
                 <Flame className="w-3.5 h-3.5" />
-                <span className="leading-tight text-center md:inline">Simular incendio</span>
+                <span className="leading-tight text-center md:inline">SIMULACRO · Incendio</span>
               </button>
               <button
                 onClick={() => injectEvent('deforestacion')}
@@ -273,17 +388,56 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div className="border-t border-amber-500/20 bg-amber-500/10 px-4 py-1.5 text-center text-xs font-medium text-amber-300">
-          Datos de demostración (simulados)
-        </div>
       </header>
 
       <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 space-y-4 px-4 py-4">
+        <section className="flex flex-col gap-3 rounded-xl border border-slate-700/60 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-100">Origen de incendios y focos de calor</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              {mode === 'real' ? 'NASA FIRMS (VIIRS)' : 'Modo demo · incendios sintéticos'}
+              {mode === 'real' && fetchedAt && (
+                <> · Última actualización: hace {Math.max(0, Math.floor((Date.now() - Date.parse(fetchedAt)) / 60_000))} min</>
+              )}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Modo de datos">
+            <button
+              type="button"
+              aria-pressed={mode === 'real'}
+              onClick={() => {
+                setMode('real');
+                if (fuegosError) void refreshFuegos();
+              }}
+              className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${mode === 'real' ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+            >
+              Datos reales
+            </button>
+            <button
+              type="button"
+              aria-pressed={mode === 'demo'}
+              onClick={() => setMode('demo')}
+              className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${mode === 'demo' ? 'border-amber-400 bg-amber-500/15 text-amber-200' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
+            >
+              Modo demo
+            </button>
+          </div>
+        </section>
+        {fuegosError && (
+          <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            No se pudo conectar con NASA FIRMS, mostrando datos simulados. {fuegosError}
+          </div>
+        )}
+        {mode === 'real' && !fuegosLoading && !fuegosError && fuegoCount === 0 && (
+          <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200">
+            Sin focos detectados en las últimas 24 h.
+          </p>
+        )}
         {/* Stats */}
-        <StatsCards stats={stats} />
-        <LiveIndicators values={liveIndicators} />
+        <StatsCards stats={stats} mode={mode} />
+        <LiveIndicators values={liveIndicators} mode={mode} />
         <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-slate-800/50" />}>
-          <TrendCharts readings={trendReadings} />
+          <TrendCharts readings={trendReadings} mode={mode} />
         </Suspense>
         {fireSimulation && (
           <section
@@ -322,14 +476,16 @@ export default function App() {
         )}
 
         {/* Filters */}
-        <Filters
-          typeFilter={typeFilter}
-          severityFilter={severityFilter}
-          statusFilter={statusFilter}
-          onTypeChange={setTypeFilter}
-          onSeverityChange={setSeverityFilter}
-          onStatusChange={setStatusFilter}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Filters
+            typeFilter={typeFilter}
+            severityFilter={severityFilter}
+            statusFilter={statusFilter}
+            onTypeChange={setTypeFilter}
+            onSeverityChange={setSeverityFilter}
+            onStatusChange={setStatusFilter}
+          />
+        </div>
 
         {/* Map + Event list */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ minHeight: 420 }}>
@@ -356,12 +512,12 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="min-w-0 lg:col-span-2">
             <Suspense fallback={<div className="h-48 animate-pulse rounded-xl bg-slate-800/50" />}>
-              <Charts events={events} />
+              <Charts events={visibleEvents} mode={mode} />
             </Suspense>
           </div>
           <div>
             <div className="space-y-4">
-              <AlertHistory events={events} onSelect={handleHistorySelect} />
+              <AlertHistory events={visibleEvents} onSelect={handleHistorySelect} />
               <AlertLogPanel logs={alerts} />
             </div>
           </div>
@@ -369,7 +525,13 @@ export default function App() {
       </main>
 
       <footer className="border-t border-slate-800 py-3 text-center text-[11px] text-slate-600">
-        Guardián del Guaviare · Demo técnica · Datos sintéticos con coordenadas reales del departamento · 2026
+        <p>Guardián del Guaviare · Proyecto de demostración; no es un sistema oficial de alerta.</p>
+        <p className="mt-1">
+          Fuentes: <a className="text-slate-400 underline" href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noreferrer">NASA FIRMS (VIIRS)</a>
+          {' · '}
+          <a className="text-slate-400 underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
+          {' · '}Río y deforestación: datos simulados.
+        </p>
       </footer>
 
       <AlertModal

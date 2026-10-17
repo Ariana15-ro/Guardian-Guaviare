@@ -19,6 +19,7 @@ import { es } from 'date-fns/locale';
 
 interface Props {
   events: SensorEvent[];
+  mode: 'real' | 'demo';
 }
 
 const COLORS = {
@@ -27,7 +28,7 @@ const COLORS = {
   nivel_rio: '#3b82f6',
 };
 
-export function Charts({ events }: Props) {
+export function Charts({ events, mode }: Props) {
   const trendData = useMemo(() => {
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = subDays(new Date(), 6 - i);
@@ -83,6 +84,9 @@ export function Charts({ events }: Props) {
       {/* Trend */}
       <div className="min-w-0 overflow-hidden lg:col-span-2 bg-slate-800/50 border border-slate-700/60 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-slate-200 mb-3">Tendencia últimos 7 días</h3>
+        <p className="mb-2 text-xs text-slate-400">
+          {mode === 'real' ? 'Incendios: NASA FIRMS · río y deforestación: simulados' : 'Datos de eventos simulados'}
+        </p>
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={trendData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#334155" />

@@ -14,6 +14,11 @@ export interface SensorEvent {
   value?: number; // hectáreas, temperatura, o nivel en metros
   municipality: string;
   status: 'activo' | 'resuelto' | 'en_monitoreo';
+  source?: 'real' | 'simulated';
+  confidence?: 'l' | 'n' | 'h';
+  frp?: number;
+  localTime?: string;
+  satellite?: string;
 }
 
 export interface AlertLog {

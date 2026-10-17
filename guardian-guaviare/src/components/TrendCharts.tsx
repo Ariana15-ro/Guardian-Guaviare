@@ -20,6 +20,7 @@ export interface TrendReading {
 
 interface Props {
   readings: TrendReading[];
+  mode: 'real' | 'demo';
 }
 
 const options: ChartOptions<'line'> = {
@@ -82,11 +83,11 @@ function buildData(
   };
 }
 
-export function TrendCharts({ readings }: Props) {
+export function TrendCharts({ readings, mode }: Props) {
   return (
     <section aria-label="Gráficos de tendencia" className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2">
       <article className="min-w-0 overflow-hidden rounded-xl border border-slate-700/60 bg-slate-800/50 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-200">Tendencia del nivel del río (m)</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-200">Nivel del río (m · simulado)</h2>
         <div className="relative h-56 w-full sm:h-64">
           <Line
             data={buildData(readings, 'riverLevel', '#38bdf8', 'Nivel (m)')}
@@ -101,7 +102,9 @@ export function TrendCharts({ readings }: Props) {
         </div>
       </article>
       <article className="min-w-0 overflow-hidden rounded-xl border border-slate-700/60 bg-slate-800/50 p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-200">Tendencia de focos de calor</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-200">
+          {mode === 'real' ? 'Focos NASA FIRMS · últimas 24 h' : 'Tendencia de focos de calor (simulada)'}
+        </h2>
         <div className="relative h-56 w-full sm:h-64">
           <Line
             data={buildData(readings, 'heatSpots', '#fb7185', 'Focos')}

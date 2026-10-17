@@ -3,6 +3,7 @@ import { LiveIndicators as LiveIndicatorValues } from '../types';
 
 interface Props {
   values: LiveIndicatorValues;
+  mode: 'real' | 'demo';
 }
 
 type IndicatorStatus = 'normal' | 'alerta' | 'critico';
@@ -19,7 +20,7 @@ const STATUS_STYLES: Record<IndicatorStatus, string> = {
   critico: 'border-red-500/50 bg-red-500/10 text-red-300',
 };
 
-export function LiveIndicators({ values }: Props) {
+export function LiveIndicators({ values, mode }: Props) {
   const cards = [
     {
       label: 'Nivel del río',
@@ -31,21 +32,21 @@ export function LiveIndicators({ values }: Props) {
             ? 'alerta'
             : 'normal',
       icon: Waves,
-      description: 'Umbral de alerta: 4.80 m',
+      description: 'Simulado · umbral de alerta: 4.80 m',
     },
     {
       label: 'Focos de calor',
       value: values.heatSpots,
       status: statusFor(values.heatSpots, 6, 12),
       icon: Flame,
-      description: 'Detecciones activas simuladas',
+      description: mode === 'real' ? 'Detecciones de las últimas 24 h · NASA FIRMS' : 'Detecciones activas · simulado',
     },
     {
       label: 'Alertas de deforestación',
       value: values.deforestationAlerts,
       status: statusFor(values.deforestationAlerts, 5, 10),
       icon: TreePine,
-      description: 'Alertas activas simuladas',
+      description: 'Alertas activas · simulado',
     },
   ] satisfies {
     label: string;

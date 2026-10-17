@@ -37,6 +37,9 @@ export function EventList({ events, selectedId, onSelect, onAlert }: Props) {
                       {severityLabel(ev.severity)}
                     </span>
                     <span className="text-[10px] text-slate-500">{typeLabel(ev.type)}</span>
+                    <span className={`text-[9px] font-semibold uppercase ${ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {ev.source === 'real' ? 'Real' : 'Simulado'}
+                    </span>
                   </div>
                   <p className="text-sm text-slate-200 truncate leading-snug">{ev.title}</p>
                   <div className="flex items-center justify-between mt-1.5">

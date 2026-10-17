@@ -1,9 +1,8 @@
 # Guardián del Guaviare
 
-Dashboard de monitoreo ambiental para el departamento del Guaviare (Colombia).  
-Simula sensores de **deforestación**, **incendios** y **nivel de ríos** con mapa en vivo, gráficos y sistema de alertas SMS/WhatsApp (simulado).
+Dashboard de monitoreo ambiental para el departamento del Guaviare (Colombia), con focos de calor reales de NASA FIRMS y datos de demostración para río y deforestación.
 
-> **Datos de demostración (simulados).** Esta app no muestra mediciones ambientales reales.
+> **Demostración, no sistema oficial de alerta.** Las detecciones de incendios reales vienen de NASA FIRMS (VIIRS); río y deforestación siguen siendo datos simulados.
 
 ## Stack
 
@@ -11,7 +10,8 @@ Simula sensores de **deforestación**, **incendios** y **nivel de ríos** con ma
 - Leaflet + OpenStreetMap (mapa interactivo sin clave de API)
 - Recharts y Chart.js (gráficos)
 - Tailwind CSS
-- Datos 100% sintéticos con coordenadas reales del Guaviare
+- NASA FIRMS (VIIRS SNPP NRT) para focos de calor del Guaviare
+- Datos sintéticos etiquetados para río, deforestación y modo demo
 
 ## Cómo correrlo
 
@@ -25,50 +25,66 @@ Abre http://localhost:5173
 
 ## Características
 
-- Mapa interactivo con eventos de diferentes severidades
+- Mapa interactivo con focos NASA FIRMS y eventos simulados diferenciados
 - Filtros por tipo, severidad y estado
-- Indicadores ambientales en vivo simulados, con umbrales de color
+- Conteo de focos de calor NASA FIRMS; río y deforestación simulados
 - Gráficos de tendencia del nivel del río y focos de calor (últimas 20 lecturas)
 - Historial de alertas seleccionable que centra el mapa
 - Simulador de incendio con aviso sonoro, marcador animado y botón para restablecer
 - Botones para inyectar eventos de demostración (incendio / deforestación / río)
-- Modal de alerta con simulación de envío SMS/WhatsApp + historial
+- Envío de alertas a ntfy.sh desde un endpoint backend protegido
 - Generación automática de nuevos eventos cada ~30 segundos
 
-## Despliegue gratuito en Vercel
+## Datos reales y alertas
 
-No se necesita `vercel.json`, backend, variables de entorno ni claves API. Vercel detecta Vite y publica el contenido generado en `dist`.
+La clave de FIRMS y el tema de ntfy solo se usan en las funciones serverless; no se incluyen en el frontend. Copia `.env.example` como `.env.local` y completa las variables en tu entorno local o en la configuración de Vercel:
 
-1. Sube esta carpeta del proyecto (la que contiene `package.json`) a un repositorio de GitHub.
-2. Inicia sesión en [vercel.com](https://vercel.com) con GitHub y elige **Add New → Project**.
-3. Importa el repositorio y selecciona como **Root Directory** la carpeta que contiene este `package.json`.
-4. Deja **Framework Preset** en `Vite` y confirma estos valores:
-   - **Install Command:** `npm install`
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-5. No agregues variables de entorno. Pulsa **Deploy**.
-6. Vercel dará una URL pública; los siguientes `git push` a la rama conectada generarán nuevos despliegues.
+| Variable | Requerida | Uso |
+| --- | --- | --- |
+| `FIRMS_MAP_KEY` | Sí | Clave de NASA FIRMS, consumida exclusivamente por `api/fuegos.ts` y `api/notificar.ts`. |
+| `NTFY_TOPIC` | Para notificar | Tema de ntfy.sh al que se publican las alertas. |
+| `CRON_SECRET` | Para notificar | Token Bearer que protege `/api/notificar`. |
+| `DASHBOARD_URL` | Para notificar | URL pública del tablero, usada en el enlace de cada alerta. |
+| `UPSTASH_REDIS_REST_URL` | No | URL REST para deduplicación persistente por 24 horas. |
+| `UPSTASH_REDIS_REST_TOKEN` | No | Token REST de Upstash; configura junto con la URL. |
 
-Para probar localmente la misma compilación antes de desplegar:
+Obtén una `MAP_KEY` gratuita desde la página de [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api/area/), siguiendo el registro/acceso solicitado por NASA. Crea un tema en [ntfy.sh](https://ntfy.sh/) con un nombre largo y único y suscríbete desde su app o web. Los temas públicos no son privados: no incluyas datos sensibles en las notificaciones y no pongas el nombre del tema en el frontend.
 
-```bash
-npm ci
-npm run build
-npm run preview
+### Probar localmente
+
+Vite por sí solo no ejecuta las funciones de `api/`; usa Vercel Dev localmente (esto **no despliega**):
+
+```powershell
+Copy-Item .env.example .env.local
+# Edita .env.local y completa las variables requeridas
+npx vercel dev
 ```
 
-## Demo en feria
+Abre la URL local que indique Vercel Dev. El dashboard consulta `GET /api/fuegos` al cargar y cada 10 minutos; ante un fallo, reintenta y activa el modo demo con un aviso visible. `/api/fuegos` es de solo lectura y nunca notifica.
 
-1. Abre el dashboard
-2. Usa los botones de la esquina superior derecha para generar eventos de demostración
-3. Haz clic en un evento → se centra el mapa
-4. Pulsa **Simular incendio** para probar el aviso y **Restablecer** para volver al estado anterior
-5. Selecciona una alerta del historial para centrar el mapa
-6. Muestra los gráficos y el historial
+Prueba manual de la ruta protegida de notificación (desde PowerShell, cambia URL y secreto por los tuyos):
 
-## Notas técnicas
+```powershell
+curl.exe -X POST "http://localhost:3000/api/notificar" `
+  -H "Authorization: Bearer TU_CRON_SECRET"
+```
 
-- Cero costo de infraestructura
-- Todo corre en el navegador
-- Las alertas SMS/WhatsApp son solo demostrativas y nunca envían mensajes reales
-- En producción real se reemplazaría el generador sintético por datos de FIRMS, IDEAM, etc. y Twilio/WhatsApp Business API
+`/api/notificar` también admite GET con el mismo Bearer. Solo considera confianza nominal/alta de las últimas 3 horas y limita el envío a cinco notificaciones por ejecución (si hay más focos, agrupa el resto). Sin Upstash, la deduplicación usa un `Set` en memoria de mejor esfuerzo; las instancias serverless pueden reiniciarse o no compartir memoria, por lo que pueden repetirse alertas. Con ambas variables Upstash configuradas, los IDs se reservan mediante REST con TTL de 24 horas.
+
+### Programar un cron externo
+
+En [cron-job.org](https://cron-job.org/) (plan gratuito), crea un trabajo que ejecute cada 15 minutos:
+
+- URL: `https://TU-DOMINIO/api/notificar`
+- Método: `POST`
+- Cabecera: `Authorization: Bearer TU_CRON_SECRET`
+
+Guarda el secreto en el gestor de credenciales del cron y en las variables de entorno del backend; no lo publiques en el repositorio ni en el navegador.
+
+### Modo demo
+
+El botón **SIMULACRO · Incendio** genera un evento únicamente en la interfaz (incluido el sonido) y no llama al endpoint de notificaciones ni a ntfy. El selector permite cambiar entre **Datos reales** y **Modo demo**.
+
+## Compilar para despliegue posterior
+
+La publicación en Vercel queda a cargo del usuario. Desde esta carpeta, `npm run build` compila el frontend; para ejecutar también las funciones API en local usa `npx vercel dev`.

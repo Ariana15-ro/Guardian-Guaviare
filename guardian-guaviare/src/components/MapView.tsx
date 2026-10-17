@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import type { CircleMarker as LeafletCircleMarker } from 'leaflet';
 import { SensorEvent, EventType } from '../types';
 import { formatDate, typeLabel, severityLabel, typeIcon } from '../utils/format';
 import 'leaflet/dist/leaflet.css';
@@ -53,6 +54,11 @@ function FlyToSelected({
 
 export function MapView({ events, selectedId, onSelect, pulseId = null, resetToken = 0 }: Props) {
   const center = useMemo(() => [2.3, -72.6] as [number, number], []);
+  const markers = useRef(new Map<string, LeafletCircleMarker>());
+
+  useEffect(() => {
+    if (selectedId) markers.current.get(selectedId)?.openPopup();
+  }, [events, selectedId]);
 
   return (
     <div className="h-full w-full rounded-xl overflow-hidden border border-slate-700/60">
@@ -80,12 +86,17 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
               key={ev.id}
               center={[ev.lat, ev.lng]}
               radius={isSelected ? radius + 4 : radius}
+              ref={(layer) => {
+                if (layer) markers.current.set(ev.id, layer);
+                else markers.current.delete(ev.id);
+              }}
               pathOptions={{
                 className: isPulsing ? 'fire-pulse' : undefined,
                 color: isPulsing ? '#ef4444' : isSelected ? '#fff' : color,
                 fillColor: isPulsing ? '#ef4444' : color,
-                fillOpacity: isSelected ? 0.9 : 0.65,
+                fillOpacity: isSelected ? 0.9 : ev.source === 'real' ? 0.85 : 0.4,
                 weight: isSelected ? 3 : 1.5,
+                dashArray: ev.source === 'real' ? undefined : '4 3',
               }}
               eventHandlers={{
                 click: () => onSelect(ev.id),
@@ -99,6 +110,9 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
                   </div>
                   <p className="text-sm font-medium mb-1">{ev.title}</p>
                   <p className="text-xs text-slate-400 mb-2">{ev.description}</p>
+                  <p className={`mb-2 text-[10px] font-semibold uppercase tracking-wide ${ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {ev.source === 'real' ? 'Dato real · NASA FIRMS' : 'Dato simulado'}
+                  </p>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <div>
                       <span className="text-slate-500">Severidad:</span>{' '}
@@ -116,12 +130,24 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
                       <span className="text-slate-500">Valor:</span>{' '}
                       <span className="font-medium">
                         {ev.type === 'deforestacion' && `${ev.value} ha`}
-                        {ev.type === 'incendio' && `${ev.value}°C`}
+                        {ev.type === 'incendio' && ev.frp !== undefined && `${ev.frp} MW FRP`}
+                        {ev.type === 'incendio' && ev.frp === undefined && `${ev.value}°C`}
                         {ev.type === 'nivel_rio' && `${ev.value} m`}
                       </span>
                     </div>
+                    {ev.confidence && (
+                      <div>
+                        <span className="text-slate-500">Confianza:</span>{' '}
+                        <span className="font-medium">
+                          {{ l: 'Baja', n: 'Nominal', h: 'Alta' }[ev.confidence]}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-2 text-[11px] text-slate-500">{formatDate(ev.timestamp)}</div>
+                  <div className="mt-2 text-[11px] text-slate-500">
+                    {ev.localTime ?? formatDate(ev.timestamp)}
+                    {ev.satellite && ` · ${ev.satellite}`}
+                  </div>
                 </div>
               </Popup>
             </CircleMarker>

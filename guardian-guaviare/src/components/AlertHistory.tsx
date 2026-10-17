@@ -38,6 +38,9 @@ export function AlertHistory({ events, onSelect }: Props) {
                     </span>
                     <span className="truncate text-xs text-slate-300">{typeLabel(event.type)}</span>
                   </div>
+                  <p className={`mt-1 text-[10px] font-semibold uppercase tracking-wide ${event.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {event.source === 'real' ? 'NASA FIRMS · real' : 'Simulado'}
+                  </p>
                   <p className="mt-1 truncate text-sm text-white">{event.municipality}</p>
                   <time className="mt-0.5 block text-xs text-slate-400" dateTime={event.timestamp}>
                     {formatDate(event.timestamp)}

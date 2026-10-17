@@ -39,7 +39,7 @@ function AlertDialog({
       event.type === 'deforestacion'
         ? `${event.value} ha`
         : event.type === 'incendio'
-          ? `${event.value}°C`
+          ? event.frp !== undefined ? `${event.frp} MW FRP` : `${event.value}°C`
           : `${event.value} m`;
 
     return `[Guardián Guaviare] ALERTA ${severityLabel(event.severity).toUpperCase()}

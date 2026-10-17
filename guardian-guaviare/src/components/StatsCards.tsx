@@ -3,9 +3,10 @@ import { DashboardStats } from '../types';
 
 interface Props {
   stats: DashboardStats;
+  mode: 'real' | 'demo';
 }
 
-export function StatsCards({ stats }: Props) {
+export function StatsCards({ stats, mode }: Props) {
   const cards = [
     {
       label: 'Eventos Activos',
@@ -15,28 +16,28 @@ export function StatsCards({ stats }: Props) {
       iconColor: 'text-amber-400',
     },
     {
-      label: 'Deforestación',
+      label: 'Deforestación · simulado',
       value: stats.deforestacion,
       icon: TreePine,
       color: 'from-orange-500/20 to-orange-600/5 border-orange-500/30',
       iconColor: 'text-orange-400',
     },
     {
-      label: 'Incendios',
+      label: mode === 'real' ? 'Incendios · FIRMS' : 'Incendios · demo',
       value: stats.incendios,
       icon: Flame,
       color: 'from-red-500/20 to-red-600/5 border-red-500/30',
       iconColor: 'text-red-400',
     },
     {
-      label: 'Niveles de Río',
+      label: 'Río · simulado',
       value: stats.nivelesRio,
       icon: Waves,
       color: 'from-blue-500/20 to-blue-600/5 border-blue-500/30',
       iconColor: 'text-blue-400',
     },
     {
-      label: 'Hectáreas estimadas',
+      label: 'Hectáreas · simulado',
       value: stats.hectareasEstimadas.toFixed(1),
       icon: MapPin,
       color: 'from-emerald-500/20 to-emerald-600/5 border-emerald-500/30',

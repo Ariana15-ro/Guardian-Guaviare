@@ -163,6 +163,7 @@ export function generateEvent(forceType?: EventType, forceSeverity?: Severity): 
     value: Math.round(value * 100) / 100,
     municipality: mun.name,
     status: Math.random() > 0.25 ? 'activo' : (Math.random() > 0.5 ? 'en_monitoreo' : 'resuelto'),
+    source: 'simulated',
   };
 }
 
