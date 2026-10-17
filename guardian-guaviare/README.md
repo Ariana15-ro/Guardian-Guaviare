@@ -2,7 +2,7 @@
 
 Dashboard de monitoreo ambiental para el departamento del Guaviare (Colombia), con focos de calor reales de NASA FIRMS y datos de demostración para río y deforestación.
 
-> **Demostración, no sistema oficial de alerta.** Las detecciones de incendios reales vienen de NASA FIRMS (VIIRS); río y deforestación siguen siendo datos simulados.
+> **Demostración, no sistema oficial de alerta.** Los focos de calor reales vienen de NASA FIRMS (VIIRS) y no son confirmaciones de incendios; río y deforestación siguen siendo datos simulados.
 
 ## Stack
 
@@ -30,8 +30,8 @@ Abre http://localhost:5173
 - Conteo de focos de calor NASA FIRMS; río y deforestación simulados
 - Gráficos de tendencia del nivel del río y focos de calor (últimas 20 lecturas)
 - Historial de alertas seleccionable que centra el mapa
-- Simulador de incendio con aviso sonoro, marcador animado y botón para restablecer
-- Botones para inyectar eventos de demostración (incendio / deforestación / río)
+- Simulador de foco de calor con aviso sonoro, marcador animado y botón para restablecer
+- Botones para inyectar eventos de demostración (foco de calor / deforestación / río)
 - Envío de alertas a ntfy.sh desde un endpoint backend protegido
 - Generación automática de nuevos eventos cada ~30 segundos
 
@@ -45,6 +45,7 @@ La clave de FIRMS y el tema de ntfy solo se usan en las funciones serverless; no
 | `NTFY_TOPIC` | Para notificar | Tema de ntfy.sh al que se publican las alertas. |
 | `CRON_SECRET` | Para notificar | Token Bearer que protege `/api/notificar`. |
 | `DASHBOARD_URL` | Para notificar | URL pública del tablero, usada en el enlace de cada alerta. |
+| `NOTIFY_WINDOW_HOURS` | No | Ventana de antigüedad para notificar focos nominales/altos, en horas (por defecto, `6`). |
 | `UPSTASH_REDIS_REST_URL` | No | URL REST para deduplicación persistente por 24 horas. |
 | `UPSTASH_REDIS_REST_TOKEN` | No | Token REST de Upstash; configura junto con la URL. |
 
@@ -69,7 +70,7 @@ curl.exe -X POST "http://localhost:3000/api/notificar" `
   -H "Authorization: Bearer TU_CRON_SECRET"
 ```
 
-`/api/notificar` también admite GET con el mismo Bearer. Solo considera confianza nominal/alta de las últimas 3 horas y limita el envío a cinco notificaciones por ejecución (si hay más focos, agrupa el resto). Sin Upstash, la deduplicación usa un `Set` en memoria de mejor esfuerzo; las instancias serverless pueden reiniciarse o no compartir memoria, por lo que pueden repetirse alertas. Con ambas variables Upstash configuradas, los IDs se reservan mediante REST con TTL de 24 horas.
+`/api/notificar` también admite GET con el mismo Bearer. Solo considera focos de confianza nominal/alta adquiridos dentro de `NOTIFY_WINDOW_HOURS` (6 horas por defecto) y limita el envío a cinco notificaciones por ejecución (si hay más focos, agrupa el resto). Las notificaciones indican: “detección satelital, no confirmada”. Sin Upstash, la deduplicación usa un `Set` en memoria de mejor esfuerzo; las instancias serverless pueden reiniciarse o no compartir memoria, por lo que pueden repetirse alertas. Con ambas variables Upstash configuradas, los IDs se reservan mediante REST con TTL de 24 horas.
 
 ### Programar un cron externo
 
@@ -83,7 +84,7 @@ Guarda el secreto en el gestor de credenciales del cron y en las variables de en
 
 ### Modo demo
 
-El botón **SIMULACRO · Incendio** genera un evento únicamente en la interfaz (incluido el sonido) y no llama al endpoint de notificaciones ni a ntfy. El selector permite cambiar entre **Datos reales** y **Modo demo**.
+El botón **SIMULACRO · Foco de calor** genera un evento únicamente en la interfaz (incluido el sonido) y no llama al endpoint de notificaciones ni a ntfy. El selector permite cambiar entre **Datos reales** y **Modo demo**.
 
 ## Compilar para despliegue posterior
 

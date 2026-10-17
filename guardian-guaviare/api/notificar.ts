@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { fetchFirmsHotspots, type FireHotspot } from './_lib/firms.js';
+import { fetchFirmsHotspots, getNotifyWindowHours, type FireHotspot } from './_lib/firms.js';
 
 interface NotificationClaim {
   hotspots: FireHotspot[];
@@ -17,9 +17,9 @@ function authorizationHeader(req: VercelRequest): string | undefined {
   return Array.isArray(header) ? header[0] : header;
 }
 
-function isRecent(hotspot: FireHotspot, now: number): boolean {
+function isRecent(hotspot: FireHotspot, now: number, windowHours: number): boolean {
   const age = now - Date.parse(hotspot.timestamp);
-  return age >= 0 && age <= 3 * 60 * 60 * 1000;
+  return age >= 0 && age <= windowHours * 60 * 60 * 1000;
 }
 
 async function redisCommand(...parts: string[]): Promise<unknown> {
@@ -102,11 +102,12 @@ async function publish(hotspots: FireHotspot[], summary: boolean): Promise<void>
 
   const confidenceLabel = (confidence: FireHotspot['confidence']) =>
     confidence === 'h' ? 'alta' : confidence === 'n' ? 'nominal' : 'baja';
-  const message = summary
+  const hotspotMessage = summary
     ? `${hotspots.length} focos nuevos: ${hotspots.slice(0, 10).map((hotspot) =>
       `${nearestPlace(hotspot)} (${hotspot.localTime}, confianza ${confidenceLabel(hotspot.confidence)}, FRP ${hotspot.frp} MW)`
     ).join('; ')}${hotspots.length > 10 ? '; y más' : ''}.`
     : `${nearestPlace(hotspots[0])} · ${hotspots[0].localTime} (Bogotá) · confianza ${confidenceLabel(hotspots[0].confidence)} · FRP ${hotspots[0].frp} MW.`;
+  const message = `${hotspotMessage} Detección satelital, no confirmada.`;
 
   const response = await fetch('https://ntfy.sh/', {
     method: 'POST',
@@ -151,10 +152,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return;
     }
 
+    const notifyWindowHours = getNotifyWindowHours();
     const allHotspots = await fetchFirmsHotspots();
     const now = Date.now();
     const eligible = allHotspots.filter(
-      (hotspot) => (hotspot.confidence === 'n' || hotspot.confidence === 'h') && isRecent(hotspot, now)
+      (hotspot) =>
+        (hotspot.confidence === 'n' || hotspot.confidence === 'h') &&
+        isRecent(hotspot, now, notifyWindowHours)
     );
     let notified = 0;
     let notificationsSent = 0;

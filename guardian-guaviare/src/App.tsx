@@ -54,7 +54,7 @@ function toFireEvent(fire: FuegoReal): SensorEvent {
     lat: fire.lat,
     lng: fire.lon,
     title: `Foco de calor · ${municipality}`,
-    description: `Confianza ${confidenceLabel}. FRP: ${fire.frp} MW. Detección VIIRS del satélite ${fire.satellite}.`,
+    description: `Detección satelital, no confirmada. Confianza ${confidenceLabel}. FRP: ${fire.frp} MW. VIIRS del satélite ${fire.satellite}.`,
     timestamp: fire.timestamp,
     value: fire.frp,
     municipality,
@@ -347,7 +347,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-lg font-bold tracking-tight text-white leading-none">Guardián del Guaviare</h1>
-              <p className="text-[11px] text-slate-400 mt-0.5">Monitoreo de deforestación · incendios · ríos</p>
+              <p className="text-[11px] text-slate-400 mt-0.5">Monitoreo de deforestación · focos de calor · ríos</p>
             </div>
           </div>
 
@@ -361,13 +361,13 @@ export default function App() {
               <button
                 onClick={simulateFire}
                 className="flex flex-1 items-center justify-center gap-1.5 px-2.5 py-2 text-xs rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 transition sm:flex-none"
-                title="Simular incendio"
-                aria-label="Simular incendio"
+                title="Simular foco de calor"
+                aria-label="Simular foco de calor"
                 disabled={fireSimulation !== null}
                 aria-disabled={fireSimulation !== null}
               >
                 <Flame className="w-3.5 h-3.5" />
-                <span className="leading-tight text-center md:inline">SIMULACRO · Incendio</span>
+                <span className="leading-tight text-center md:inline">SIMULACRO · Foco de calor</span>
               </button>
               <button
                 onClick={() => injectEvent('deforestacion')}
@@ -393,13 +393,16 @@ export default function App() {
       <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 space-y-4 px-4 py-4">
         <section className="flex flex-col gap-3 rounded-xl border border-slate-700/60 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-slate-100">Origen de incendios y focos de calor</h2>
+            <h2 className="text-sm font-semibold text-slate-100">Focos de calor</h2>
             <p className="mt-1 text-xs text-slate-400">
-              {mode === 'real' ? 'NASA FIRMS (VIIRS)' : 'Modo demo · incendios sintéticos'}
+              {mode === 'real' ? 'NASA FIRMS (VIIRS)' : 'Modo demo · focos de calor sintéticos'}
               {mode === 'real' && fetchedAt && (
                 <> · Última actualización: hace {Math.max(0, Math.floor((Date.now() - Date.parse(fetchedAt)) / 60_000))} min</>
               )}
             </p>
+            {mode === 'real' && (
+              <p className="mt-1 text-xs text-amber-300">Detección satelital, no confirmada.</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Modo de datos">
             <button
@@ -447,7 +450,7 @@ export default function App() {
             <div className="flex items-start gap-3">
               <Flame className="mt-0.5 h-5 w-5 shrink-0 animate-pulse text-red-400" aria-hidden="true" />
               <div>
-                <h2 className="font-semibold text-red-100">Incendio simulado detectado</h2>
+                <h2 className="font-semibold text-red-100">Foco de calor simulado · SIMULACRO</h2>
                 <p className="text-sm text-red-200">{fireSimulation.event.municipality} · {fireSimulation.event.title}</p>
                 <time className="text-xs text-red-300" dateTime={fireSimulation.event.timestamp}>
                   {new Intl.DateTimeFormat('es-CO', {

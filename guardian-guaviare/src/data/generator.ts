@@ -43,7 +43,7 @@ export function generateFireEvent(): SensorEvent {
     lng: municipality.lng,
     municipality: municipality.name,
     timestamp: new Date().toISOString(),
-    title: `Incendio simulado en ${municipality.name}`,
+    title: `Foco de calor simulado en ${municipality.name}`,
     status: 'activo',
   };
 }
@@ -78,7 +78,7 @@ function generateTitle(type: EventType, mun: string): string {
     ],
     incendio: [
       `Punto de calor activo cerca de ${mun}`,
-      `Incendio forestal en progreso`,
+      `Foco de calor detectado cerca de ${mun}`,
       `Foco de calor de alta intensidad`,
       `Quema detectada en área protegida`,
     ],
@@ -97,7 +97,7 @@ function generateDescription(type: EventType, value: number): string {
     return `Se estima una pérdida de aproximadamente ${value.toFixed(1)} hectáreas de cobertura boscosa. Confianza del sensor: ${(70 + Math.random() * 25).toFixed(0)}%.`;
   }
   if (type === 'incendio') {
-    return `Temperatura detectada: ${value.toFixed(0)}°C. Área aproximada afectada: ${(value / 8).toFixed(1)} ha. Viento predominante desde el este.`;
+    return `Evento simulado de foco de calor. Temperatura: ${value.toFixed(0)}°C; área aproximada: ${(value / 8).toFixed(1)} ha.`;
   }
   return `Nivel actual: ${value.toFixed(2)} m. Umbral de alerta: 4.80 m. Tendencia: ${value > 5.2 ? 'ascendente' : 'estable'}.`;
 }

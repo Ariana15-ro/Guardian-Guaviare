@@ -63,7 +63,7 @@ export function Charts({ events, mode }: Props) {
     events.forEach((e) => counts[e.type]++);
     return [
       { name: 'Deforestación', value: counts.deforestacion, color: COLORS.deforestacion },
-      { name: 'Incendios', value: counts.incendio, color: COLORS.incendio },
+      { name: 'Focos de calor', value: counts.incendio, color: COLORS.incendio },
       { name: 'Nivel Río', value: counts.nivel_rio, color: COLORS.nivel_rio },
     ];
   }, [events]);
@@ -85,7 +85,7 @@ export function Charts({ events, mode }: Props) {
       <div className="min-w-0 overflow-hidden lg:col-span-2 bg-slate-800/50 border border-slate-700/60 rounded-xl p-4">
         <h3 className="text-sm font-semibold text-slate-200 mb-3">Tendencia últimos 7 días</h3>
         <p className="mb-2 text-xs text-slate-400">
-          {mode === 'real' ? 'Incendios: NASA FIRMS · río y deforestación: simulados' : 'Datos de eventos simulados'}
+          {mode === 'real' ? 'Focos de calor: NASA FIRMS · río y deforestación: simulados' : 'Datos de eventos simulados'}
         </p>
         <ResponsiveContainer width="100%" height={180}>
           <AreaChart data={trendData}>
@@ -96,7 +96,7 @@ export function Charts({ events, mode }: Props) {
               contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: '#e2e8f0' }}
             />
-            <Area type="monotone" dataKey="incendio" stackId="1" stroke={COLORS.incendio} fill={COLORS.incendio} fillOpacity={0.4} name="Incendios" />
+            <Area type="monotone" dataKey="incendio" stackId="1" stroke={COLORS.incendio} fill={COLORS.incendio} fillOpacity={0.4} name="Focos de calor" />
             <Area type="monotone" dataKey="deforestacion" stackId="1" stroke={COLORS.deforestacion} fill={COLORS.deforestacion} fillOpacity={0.4} name="Deforestación" />
             <Area type="monotone" dataKey="nivel_rio" stackId="1" stroke={COLORS.nivel_rio} fill={COLORS.nivel_rio} fillOpacity={0.4} name="Nivel Río" />
           </AreaChart>

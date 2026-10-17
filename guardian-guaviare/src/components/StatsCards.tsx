@@ -23,7 +23,7 @@ export function StatsCards({ stats, mode }: Props) {
       iconColor: 'text-orange-400',
     },
     {
-      label: mode === 'real' ? 'Incendios · FIRMS' : 'Incendios · demo',
+      label: mode === 'real' ? 'Focos de calor · FIRMS' : 'Focos de calor · demo',
       value: stats.incendios,
       icon: Flame,
       color: 'from-red-500/20 to-red-600/5 border-red-500/30',

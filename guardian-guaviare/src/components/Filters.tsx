@@ -32,7 +32,7 @@ export function Filters({
       >
         <option value="all">Todos los tipos</option>
         <option value="deforestacion">Deforestación</option>
-        <option value="incendio">Incendios</option>
+        <option value="incendio">Focos de calor</option>
         <option value="nivel_rio">Nivel de río</option>
       </select>
 

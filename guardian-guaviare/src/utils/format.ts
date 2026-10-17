@@ -68,7 +68,7 @@ export function typeColor(type: EventType): string {
 export function typeLabel(type: EventType): string {
   const map: Record<EventType, string> = {
     deforestacion: 'Deforestación',
-    incendio: 'Incendio',
+    incendio: 'Foco de calor',
     nivel_rio: 'Nivel de Río',
   };
   return map[type];

@@ -16,7 +16,18 @@ export const GUAVIARE_BOUNDS = {
   south: 1.3,
   east: -71.5,
   north: 3.0,
-}; // Rectángulo aproximado del departamento; ajustar si se requiere mayor cobertura.
+}; // TODO: Este rectángulo es aproximado; se puede reemplazar por filtrado con el polígono del departamento.
+
+export function getNotifyWindowHours(): number {
+  const configuredHours = process.env.NOTIFY_WINDOW_HOURS;
+  if (configuredHours === undefined || configuredHours.trim() === '') return 6;
+
+  const hours = Number(configuredHours);
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw new Error('NOTIFY_WINDOW_HOURS debe ser un número mayor que cero.');
+  }
+  return hours;
+}
 
 function splitCsvRow(row: string): string[] {
   const values: string[] = [];
