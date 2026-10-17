@@ -1,15 +1,5 @@
-import { fetchFirmsHotspots, type FireHotspot } from './_lib/firms';
-
-interface ApiRequest {
-  method?: string;
-  headers: Record<string, string | string[] | undefined>;
-}
-
-interface ApiResponse {
-  setHeader(name: string, value: string): void;
-  status(code: number): ApiResponse;
-  json(body: unknown): void;
-}
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { fetchFirmsHotspots, type FireHotspot } from './_lib/firms.js';
 
 interface NotificationClaim {
   hotspots: FireHotspot[];
@@ -22,7 +12,7 @@ const REDIS_TTL_SECONDS = 86_400;
 const MAX_NOTIFICATIONS = 5;
 const INDIVIDUAL_NOTIFICATIONS = MAX_NOTIFICATIONS - 1;
 
-function authorizationHeader(req: ApiRequest): string | undefined {
+function authorizationHeader(req: VercelRequest): string | undefined {
   const header = req.headers.authorization ?? req.headers.Authorization;
   return Array.isArray(header) ? header[0] : header;
 }
@@ -134,33 +124,33 @@ async function publish(hotspots: FireHotspot[], summary: boolean): Promise<void>
   if (!response.ok) throw new Error(`ntfy respondió con estado ${response.status}.`);
 }
 
-export default async function handler(req: ApiRequest, res: ApiResponse): Promise<void> {
-  res.setHeader('Cache-Control', 'no-store');
-  if (req.method !== 'GET' && req.method !== 'POST') {
-    res.setHeader('Allow', 'GET, POST');
-    res.status(405).json({ error: 'Método no permitido. Usa GET o POST.' });
-    return;
-  }
-
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    res.status(500).json({ error: 'CRON_SECRET no está configurada.' });
-    return;
-  }
-  if (authorizationHeader(req) !== `Bearer ${cronSecret}`) {
-    res.status(401).json({ error: 'No autorizado.' });
-    return;
-  }
-  if (!process.env.NTFY_TOPIC || !process.env.DASHBOARD_URL) {
-    res.status(500).json({ error: 'NTFY_TOPIC y DASHBOARD_URL deben estar configuradas.' });
-    return;
-  }
-  if (Boolean(process.env.UPSTASH_REDIS_REST_URL) !== Boolean(process.env.UPSTASH_REDIS_REST_TOKEN)) {
-    res.status(500).json({ error: 'Configura UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN juntas, o deja ambas vacías.' });
-    return;
-  }
-
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   try {
+    res.setHeader('Cache-Control', 'no-store');
+    if (req.method !== 'GET' && req.method !== 'POST') {
+      res.setHeader('Allow', 'GET, POST');
+      res.status(405).json({ error: 'Método no permitido. Usa GET o POST.' });
+      return;
+    }
+
+    const cronSecret = process.env.CRON_SECRET;
+    if (!cronSecret) {
+      res.status(500).json({ error: 'CRON_SECRET no está configurada.' });
+      return;
+    }
+    if (authorizationHeader(req) !== `Bearer ${cronSecret}`) {
+      res.status(401).json({ error: 'No autorizado.' });
+      return;
+    }
+    if (!process.env.NTFY_TOPIC || !process.env.DASHBOARD_URL) {
+      res.status(500).json({ error: 'NTFY_TOPIC y DASHBOARD_URL deben estar configuradas.' });
+      return;
+    }
+    if (Boolean(process.env.UPSTASH_REDIS_REST_URL) !== Boolean(process.env.UPSTASH_REDIS_REST_TOKEN)) {
+      res.status(500).json({ error: 'Configura UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN juntas, o deja ambas vacías.' });
+      return;
+    }
+
     const allHotspots = await fetchFirmsHotspots();
     const now = Date.now();
     const eligible = allHotspots.filter(
@@ -205,7 +195,7 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
         : 'memoria-mejor-esfuerzo',
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Error desconocido al enviar alertas.';
-    res.status(502).json({ error: `No fue posible completar la consulta o notificación: ${message}` });
+    console.error('[api/notificar] Invocation failed:', error);
+    res.status(500).json({ error: 'No fue posible completar el proceso de notificación.' });
   }
 }
