@@ -136,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     const notifyWindowHours = getNotifyWindowHours();
-    const allHotspots = await fetchFirmsHotspots();
+    const allHotspots = await fetchFirmsHotspots(notifyWindowHours);
     const now = Date.now();
     const eligible = allHotspots.filter(
       (hotspot) =>

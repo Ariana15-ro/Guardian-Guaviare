@@ -18,6 +18,9 @@ export const GUAVIARE_BOUNDS = {
   north: 3.0,
 }; // TODO: Este rectángulo es aproximado; se puede reemplazar por filtrado con el polígono del departamento.
 
+export const FIRMS_DAY_RANGE = 2;
+const MAX_NOTIFY_WINDOW_HOURS = 48;
+
 export function getNotifyWindowHours(): number {
   const configuredHours = process.env.NOTIFY_WINDOW_HOURS;
   if (configuredHours === undefined || configuredHours.trim() === '') return 6;
@@ -26,7 +29,7 @@ export function getNotifyWindowHours(): number {
   if (!Number.isFinite(hours) || hours <= 0) {
     throw new Error('NOTIFY_WINDOW_HOURS debe ser un número mayor que cero.');
   }
-  return hours;
+  return Math.min(hours, MAX_NOTIFY_WINDOW_HOURS);
 }
 
 function splitCsvRow(row: string): string[] {
@@ -119,15 +122,24 @@ export function parseFirmsCsv(csv: string): FireHotspot[] {
   return hotspots;
 }
 
-export async function fetchFirmsHotspots(): Promise<FireHotspot[]> {
+export async function fetchFirmsHotspots(windowHours = 24): Promise<FireHotspot[]> {
   const mapKey = process.env.FIRMS_MAP_KEY;
   if (!mapKey) throw new Error('FIRMS_MAP_KEY no está configurada.');
 
+  const dayRange = Math.max(FIRMS_DAY_RANGE, Math.ceil(windowHours / 24));
   const { west, south, east, north } = GUAVIARE_BOUNDS;
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}/VIIRS_SNPP_NRT/${west},${south},${east},${north}/1`;
+  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}/VIIRS_SNPP_NRT/${west},${south},${east},${north}/${dayRange}`;
   const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
   if (!response.ok) {
     throw new Error(`NASA FIRMS respondió con estado ${response.status}.`);
   }
-  return parseFirmsCsv(await response.text());
+  const fetchedHotspots = parseFirmsCsv(await response.text());
+  const now = Date.now();
+  const windowMilliseconds = windowHours * 60 * 60 * 1000;
+  const filteredHotspots = fetchedHotspots.filter((hotspot) => {
+    const age = now - Date.parse(hotspot.timestamp);
+    return age >= 0 && age <= windowMilliseconds;
+  });
+  console.log('[NASA FIRMS] Hotspots returned:', fetchedHotspots.length, 'passing time window:', filteredHotspots.length);
+  return filteredHotspots;
 }
