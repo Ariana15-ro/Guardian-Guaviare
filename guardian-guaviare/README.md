@@ -2,6 +2,8 @@
 
 Dashboard de monitoreo ambiental para el departamento del Guaviare (Colombia), con focos de calor reales de NASA FIRMS y datos de demostración para río y deforestación.
 
+El área de búsqueda de FIRMS usa un rectángulo geográfico aproximado; por ello, algunos focos mostrados pueden quedar fuera de los límites oficiales del departamento.
+
 > **Demostración, no sistema oficial de alerta.** Los focos de calor reales vienen de NASA FIRMS (VIIRS) y no son confirmaciones de incendios; río y deforestación siguen siendo datos simulados.
 
 ## Stack

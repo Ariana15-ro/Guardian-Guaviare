@@ -2,12 +2,20 @@ name: Notificar focos de calor
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notificar-focos
+  cancel-in-progress: false
 
 jobs:
   notificar:
     runs-on: ubuntu-latest
+    timeout-minutes: 3
     steps:
       - name: Llamar a /api/notificar
         env:
@@ -15,5 +23,6 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
         run: |
           curl --fail-with-body -sS \
+            --max-time 40 --retry 2 --retry-delay 5 \
             -H "Authorization: Bearer $CRON_SECRET" \
             "$APP_URL/api/notificar"
