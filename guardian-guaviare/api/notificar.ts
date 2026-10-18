@@ -1,14 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { fetchFirmsHotspots, getNotifyWindowHours, type FireHotspot } from './_lib/firms.js';
 
-interface NotificationClaim {
-  hotspots: FireHotspot[];
-  keys: string[];
-}
-
 const memoryNotified = new Set<string>();
 const memoryPending = new Set<string>();
-const REDIS_TTL_SECONDS = 86_400;
 const MAX_NOTIFICATIONS = 5;
 const INDIVIDUAL_NOTIFICATIONS = MAX_NOTIFICATIONS - 1;
 
@@ -22,54 +16,47 @@ function isRecent(hotspot: FireHotspot, now: number, windowHours: number): boole
   return age >= 0 && age <= windowHours * 60 * 60 * 1000;
 }
 
-async function redisCommand(...parts: string[]): Promise<unknown> {
-  const baseUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!baseUrl || !token) throw new Error('La configuración de Upstash está incompleta.');
-
-  const path = parts.map((part) => encodeURIComponent(part)).join('/');
-  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
+function claimMemoryHotspots(hotspots: FireHotspot[]): FireHotspot[] {
+  return hotspots.filter((hotspot) => {
+    if (memoryNotified.has(hotspot.id) || memoryPending.has(hotspot.id)) return false;
+    memoryPending.add(hotspot.id);
+    return true;
   });
-  if (!response.ok) throw new Error(`Upstash respondió con estado ${response.status}.`);
-  const result = await response.json() as { result?: unknown; error?: string };
-  if (result.error) throw new Error(`Upstash: ${result.error}`);
-  return result.result;
 }
 
-async function claimHotspots(hotspots: FireHotspot[]): Promise<NotificationClaim> {
-  const useRedis = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-  const claimed: NotificationClaim = { hotspots: [], keys: [] };
-  try {
-    for (const hotspot of hotspots) {
-      const key = `guardian-guaviare:fire:${hotspot.id}`;
-      if (useRedis) {
-        const result = await redisCommand('set', key, '1', 'EX', String(REDIS_TTL_SECONDS), 'NX');
-        if (result === 'OK') {
-          claimed.hotspots.push(hotspot);
-          claimed.keys.push(key);
-        }
-      } else if (!memoryNotified.has(hotspot.id) && !memoryPending.has(hotspot.id)) {
-        memoryPending.add(hotspot.id);
-        claimed.hotspots.push(hotspot);
-        claimed.keys.push(key);
-      }
+async function findNewHotspotsWithSupabase(hotspots: FireHotspot[]): Promise<FireHotspot[]> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    throw new Error('Supabase environment variables are not configured.');
+  }
+
+  if (hotspots.length === 0) return [];
+
+  const response = await fetch(
+    `${supabaseUrl.replace(/\/$/, '')}/rest/v1/notified_hotspots`,
+    {
+      method: 'POST',
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=ignore-duplicates,return=representation',
+      },
+      body: JSON.stringify(hotspots.map(({ id }) => ({ id }))),
+      signal: AbortSignal.timeout(15_000),
     }
-  } catch (error) {
-    await releaseClaims(claimed);
-    throw error;
+  );
+  if (!response.ok) {
+    throw new Error(`Supabase REST responded with status ${response.status}.`);
   }
-  return claimed;
-}
 
-async function releaseClaims(claim: NotificationClaim): Promise<void> {
-  const useRedis = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
-  if (useRedis) {
-    for (const key of claim.keys) await redisCommand('del', key);
-  } else {
-    claim.hotspots.forEach((hotspot) => memoryPending.delete(hotspot.id));
+  const insertedRows = await response.json() as { id: string }[];
+  if (!Array.isArray(insertedRows) || insertedRows.some((row) => typeof row.id !== 'string')) {
+    throw new Error('Supabase REST returned an invalid representation.');
   }
+  const insertedIds = new Set(insertedRows.map((row) => row.id));
+  return hotspots.filter((hotspot) => insertedIds.has(hotspot.id));
 }
 
 function nearestPlace(hotspot: FireHotspot): string {
@@ -147,10 +134,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       res.status(500).json({ error: 'NTFY_TOPIC y DASHBOARD_URL deben estar configuradas.' });
       return;
     }
-    if (Boolean(process.env.UPSTASH_REDIS_REST_URL) !== Boolean(process.env.UPSTASH_REDIS_REST_TOKEN)) {
-      res.status(500).json({ error: 'Configura UPSTASH_REDIS_REST_URL y UPSTASH_REDIS_REST_TOKEN juntas, o deja ambas vacías.' });
-      return;
-    }
 
     const notifyWindowHours = getNotifyWindowHours();
     const allHotspots = await fetchFirmsHotspots();
@@ -160,31 +143,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         (hotspot.confidence === 'n' || hotspot.confidence === 'h') &&
         isRecent(hotspot, now, notifyWindowHours)
     );
+
+    let newHotspots: FireHotspot[];
+    let deduplication: 'supabase' | 'memoria-mejor-esfuerzo';
+    try {
+      newHotspots = await findNewHotspotsWithSupabase(eligible);
+      deduplication = 'supabase';
+    } catch (error) {
+      console.error('[api/notificar] Supabase deduplication unavailable; using in-memory fallback:', error);
+      newHotspots = claimMemoryHotspots(eligible);
+      deduplication = 'memoria-mejor-esfuerzo';
+    }
+
     let notified = 0;
     let notificationsSent = 0;
-    const groups: FireHotspot[][] = eligible.length > MAX_NOTIFICATIONS
+    const groups: FireHotspot[][] = newHotspots.length > MAX_NOTIFICATIONS
       ? [
-        ...eligible.slice(0, INDIVIDUAL_NOTIFICATIONS).map((hotspot) => [hotspot]),
-        eligible.slice(INDIVIDUAL_NOTIFICATIONS),
+        ...newHotspots.slice(0, INDIVIDUAL_NOTIFICATIONS).map((hotspot) => [hotspot]),
+        newHotspots.slice(INDIVIDUAL_NOTIFICATIONS),
       ]
-      : eligible.map((hotspot) => [hotspot]);
+      : newHotspots.map((hotspot) => [hotspot]);
 
     for (const group of groups) {
-      const claim = await claimHotspots(group);
-      if (!claim.hotspots.length) continue;
-
       try {
-        await publish(claim.hotspots, group.length > 1);
+        await publish(group, group.length > 1);
         notificationsSent += 1;
-        notified += claim.hotspots.length;
-        if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-          claim.hotspots.forEach((hotspot) => {
+        notified += group.length;
+        if (deduplication === 'memoria-mejor-esfuerzo') {
+          group.forEach((hotspot) => {
             memoryPending.delete(hotspot.id);
             memoryNotified.add(hotspot.id);
           });
         }
       } catch (error) {
-        await releaseClaims(claim);
+        if (deduplication === 'memoria-mejor-esfuerzo') {
+          group.forEach((hotspot) => memoryPending.delete(hotspot.id));
+        }
         throw error;
       }
     }
@@ -194,9 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       omitted: allHotspots.length - notified,
       notificationsSent,
       fetchedAt: new Date().toISOString(),
-      deduplication: process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
-        ? 'upstash-24h'
-        : 'memoria-mejor-esfuerzo',
+      deduplication,
     });
   } catch (error) {
     console.error('[api/notificar] Invocation failed:', error);

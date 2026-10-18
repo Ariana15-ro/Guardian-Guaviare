@@ -46,10 +46,16 @@ La clave de FIRMS y el tema de ntfy solo se usan en las funciones serverless; no
 | `CRON_SECRET` | Para notificar | Token Bearer que protege `/api/notificar`. |
 | `DASHBOARD_URL` | Para notificar | URL pública del tablero, usada en el enlace de cada alerta. |
 | `NOTIFY_WINDOW_HOURS` | No | Ventana de antigüedad para notificar focos nominales/altos, en horas (por defecto, `6`). |
-| `UPSTASH_REDIS_REST_URL` | No | URL REST para deduplicación persistente por 24 horas. |
-| `UPSTASH_REDIS_REST_TOKEN` | No | Token REST de Upstash; configura junto con la URL. |
+| `SUPABASE_URL` | No | URL del proyecto Supabase para deduplicación persistente. |
+| `SUPABASE_SERVICE_ROLE_KEY` | No | Clave secreta de servidor para insertar registros de deduplicación. Nunca usar en el frontend. |
 
 Obtén una `MAP_KEY` gratuita desde la página de [NASA FIRMS API](https://firms.modaps.eosdis.nasa.gov/api/area/), siguiendo el registro/acceso solicitado por NASA. Crea un tema en [ntfy.sh](https://ntfy.sh/) con un nombre largo y único y suscríbete desde su app o web. Los temas públicos no son privados: no incluyas datos sensibles en las notificaciones y no pongas el nombre del tema en el frontend.
+
+### Configurar la deduplicación de Supabase
+
+1. En el proyecto Supabase, abre **SQL Editor**, pega el contenido completo de [`supabase/schema.sql`](./supabase/schema.sql) y ejecútalo. El esquema se puede ejecutar varias veces.
+2. En **Project Settings → API**, copia la **Project URL** a `SUPABASE_URL` y la `service_role` key a `SUPABASE_SERVICE_ROLE_KEY`. Añádelas únicamente al entorno del servidor (por ejemplo, `.env.local` para pruebas locales y las variables de entorno del proyecto); nunca las pongas en el frontend ni en variables `VITE_*`.
+3. Llama a `/api/notificar` con su Bearer. En una respuesta exitosa, comprueba que el campo JSON `deduplication` tenga el valor `supabase`. Si Supabase no está configurado o su API falla, se usa deduplicación en memoria y se devuelve `memoria-mejor-esfuerzo`.
 
 ### Probar localmente
 
@@ -70,7 +76,7 @@ curl.exe -X POST "http://localhost:3000/api/notificar" `
   -H "Authorization: Bearer TU_CRON_SECRET"
 ```
 
-`/api/notificar` también admite GET con el mismo Bearer. Solo considera focos de confianza nominal/alta adquiridos dentro de `NOTIFY_WINDOW_HOURS` (6 horas por defecto) y limita el envío a cinco notificaciones por ejecución (si hay más focos, agrupa el resto). Las notificaciones indican: “detección satelital, no confirmada”. Sin Upstash, la deduplicación usa un `Set` en memoria de mejor esfuerzo; las instancias serverless pueden reiniciarse o no compartir memoria, por lo que pueden repetirse alertas. Con ambas variables Upstash configuradas, los IDs se reservan mediante REST con TTL de 24 horas.
+`/api/notificar` también admite GET con el mismo Bearer. Solo considera focos de confianza nominal/alta adquiridos dentro de `NOTIFY_WINDOW_HOURS` (6 horas por defecto) y limita el envío a cinco notificaciones por ejecución (si hay más focos, agrupa el resto). Las notificaciones indican: “detección satelital, no confirmada”. Con Supabase, los IDs insertados en `notified_hotspots` evitan notificaciones duplicadas; si Supabase no está disponible, la deduplicación usa un `Set` en memoria de mejor esfuerzo y las instancias serverless pueden reiniciarse o no compartir memoria, por lo que pueden repetirse alertas.
 
 ### Programar un cron externo
 
