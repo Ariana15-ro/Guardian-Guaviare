@@ -17,9 +17,7 @@ export function AlertLogPanel({ logs }: Props) {
 
       <div className="max-h-48 overflow-y-auto">
         {logs.length === 0 ? (
-          <div className="p-4 text-center text-slate-400 text-sm">
-            No hay alertas simuladas enviadas. Usa «Enviar alerta» en un evento para registrar una.
-          </div>
+          <div className="p-4 text-center text-slate-400 text-sm">Aún no hay alertas simuladas enviadas</div>
         ) : (
           logs.map((log) => (
             <div key={log.id} className="px-4 py-2.5 border-b border-slate-800/50 text-sm">

@@ -78,7 +78,7 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
         {events.map((ev) => {
           const isSelected = ev.id === selectedId;
           const isPulsing = ev.id === pulseId;
-          const color = TYPE_COLORS[ev.type];
+          const color = ev.historicalSnapshot ? '#c084fc' : TYPE_COLORS[ev.type];
           const radius = SEVERITY_RADIUS[ev.severity] ?? 10;
 
           return (
@@ -94,9 +94,9 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
                 className: isPulsing ? 'fire-pulse' : undefined,
                 color: isPulsing ? '#ef4444' : isSelected ? '#fff' : color,
                 fillColor: isPulsing ? '#ef4444' : color,
-                fillOpacity: isSelected ? 0.9 : ev.source === 'real' ? 0.85 : 0.4,
+                fillOpacity: isSelected ? 0.9 : ev.historicalSnapshot ? 0.95 : ev.source === 'real' ? 0.85 : 0.4,
                 weight: isSelected ? 3 : 1.5,
-                dashArray: ev.source === 'real' ? undefined : '4 3',
+                dashArray: ev.historicalSnapshot ? '2 3' : ev.source === 'real' ? undefined : '4 3',
               }}
               eventHandlers={{
                 click: () => onSelect(ev.id),
@@ -110,8 +110,8 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
                   </div>
                   <p className="text-sm font-medium mb-1">{ev.title}</p>
                   <p className="text-xs text-slate-400 mb-2">{ev.description}</p>
-                  <p className={`mb-2 text-[10px] font-semibold uppercase tracking-wide ${ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
-                    {ev.source === 'real' ? 'Dato real · NASA FIRMS' : 'Dato simulado'}
+                  <p className={`mb-2 text-[10px] font-semibold uppercase tracking-wide ${ev.historicalSnapshot ? 'text-purple-300' : ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                    {ev.historicalSnapshot ? 'Captura histórica · NASA FIRMS' : ev.source === 'real' ? 'Dato real · NASA FIRMS' : 'Dato simulado'}
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <div>

@@ -39,11 +39,14 @@ const MUNICIPALITIES = [
   { name: 'Miraflores', lat: 1.3361, lon: -71.9511 },
 ];
 
-const HISTORICAL_FOCOS: Pick<FuegoReal, 'id' | 'lat' | 'lon' | 'timestamp' | 'localTime'>[] = [
-  { id: 'viirs-2.93185--72.43925-2026-10-17-1834', lat: 2.93185, lon: -72.43925, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
-  { id: 'viirs-2.97804--72.29705-2026-10-17-1834', lat: 2.97804, lon: -72.29705, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
-  { id: 'viirs-2.97862--72.29320-2026-10-17-1834', lat: 2.97862, lon: -72.29320, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
-  { id: 'viirs-2.98212--72.29372-2026-10-17-1834', lat: 2.98212, lon: -72.29372, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
+const HISTORICAL_FOCOS: Pick<
+  FuegoReal,
+  'id' | 'lat' | 'lon' | 'timestamp' | 'localTime' | 'confidence' | 'frp' | 'satellite'
+>[] = [
+  { id: 'viirs-2.93185--72.43925-2026-10-17-1834', lat: 2.93185, lon: -72.43925, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 2.38, satellite: 'VIIRS' },
+  { id: 'viirs-2.97804--72.29705-2026-10-17-1834', lat: 2.97804, lon: -72.29705, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 2.23, satellite: 'VIIRS' },
+  { id: 'viirs-2.97862--72.29320-2026-10-17-1834', lat: 2.97862, lon: -72.29320, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 4.01, satellite: 'VIIRS' },
+  { id: 'viirs-2.98212--72.29372-2026-10-17-1834', lat: 2.98212, lon: -72.29372, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 3.78, satellite: 'VIIRS' },
 ];
 
 function toFireEvent(fire: FuegoReal): SensorEvent {
@@ -178,12 +181,16 @@ export default function App() {
         lat: foco.lat,
         lng: foco.lon,
         title: 'Foco de calor · captura histórica NASA FIRMS',
-        description: 'Registro estático del 17/10/2026. La información disponible no incluye FRP, confianza ni satélite.',
+        description: 'Captura estática de la región del Guaviare y zona de influencia. Detección satelital, no confirmada.',
         timestamp: foco.timestamp,
+        value: foco.frp,
         municipality,
         status: 'activo',
         source: 'real',
         localTime: foco.localTime,
+        confidence: foco.confidence,
+        frp: foco.frp,
+        satellite: foco.satellite,
         historicalSnapshot: true,
       };
     }),
@@ -552,7 +559,7 @@ export default function App() {
             )}
             {showHistoricalSnapshot && (
               <p className="mt-2 rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-sm font-bold text-amber-100">
-                Captura histórica NASA FIRMS · 17/10/2026, no es en tiempo real
+                Captura histórica NASA FIRMS · 17/10/2026 · no es en tiempo real · región del Guaviare y zona de influencia
               </p>
             )}
           </div>
