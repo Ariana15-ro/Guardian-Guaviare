@@ -39,7 +39,23 @@ const options: ChartOptions<'line'> = {
   },
   scales: {
     x: {
-      ticks: { color: '#94a3b8', maxTicksLimit: 6, maxRotation: 0 },
+      ticks: {
+        color: '#94a3b8',
+        maxTicksLimit: 6,
+        maxRotation: 0,
+        callback(_value, index) {
+          const timestamp = this.chart.data.labels?.[index];
+          return typeof timestamp === 'number'
+            ? new Intl.DateTimeFormat('es-CO', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+              hourCycle: 'h23',
+              timeZone: 'America/Bogota',
+            }).format(timestamp)
+            : '';
+        },
+      },
       grid: { color: 'rgba(71, 85, 105, 0.25)' },
       border: { color: '#475569' },
     },
@@ -59,13 +75,7 @@ function buildData(
   unit: string
 ) {
   return {
-    labels: readings.map((reading) =>
-      new Intl.DateTimeFormat('es-CO', {
-        hour: '2-digit',
-        minute: '2-digit',
-        timeZone: 'America/Bogota',
-      }).format(reading.timestamp)
-    ),
+    labels: readings.map((reading) => reading.timestamp),
     datasets: [
       {
         data: readings.map((reading) => reading[key]),

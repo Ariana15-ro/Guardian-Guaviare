@@ -39,6 +39,13 @@ const MUNICIPALITIES = [
   { name: 'Miraflores', lat: 1.3361, lon: -71.9511 },
 ];
 
+const HISTORICAL_FOCOS: Pick<FuegoReal, 'id' | 'lat' | 'lon' | 'timestamp' | 'localTime'>[] = [
+  { id: 'viirs-2.93185--72.43925-2026-10-17-1834', lat: 2.93185, lon: -72.43925, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
+  { id: 'viirs-2.97804--72.29705-2026-10-17-1834', lat: 2.97804, lon: -72.29705, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
+  { id: 'viirs-2.97862--72.29320-2026-10-17-1834', lat: 2.97862, lon: -72.29320, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
+  { id: 'viirs-2.98212--72.29372-2026-10-17-1834', lat: 2.98212, lon: -72.29372, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34' },
+];
+
 function toFireEvent(fire: FuegoReal): SensorEvent {
   const municipality = MUNICIPALITIES.reduce((nearest, current) => {
     const currentDistance = (current.lat - fire.lat) ** 2 + (current.lon - fire.lon) ** 2;
@@ -121,6 +128,7 @@ export default function App() {
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [fuegosError, setFuegosError] = useState<string | null>(null);
   const [fuegosLoading, setFuegosLoading] = useState(true);
+  const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(false);
   const [liveState, setLiveState] = useState<LiveDashboardState>(() => {
     const indicators = generateLiveIndicators();
     indicators.heatSpots = 0;
@@ -155,6 +163,32 @@ export default function App() {
     [fuegos]
   );
   const fuegoCount = fuegoEvents.length;
+  const historicalEvents = useMemo(
+    () => HISTORICAL_FOCOS.map((foco): SensorEvent => {
+      const municipality = MUNICIPALITIES.reduce((nearest, current) => {
+        const currentDistance = (current.lat - foco.lat) ** 2 + (current.lon - foco.lon) ** 2;
+        const nearestDistance = (nearest.lat - foco.lat) ** 2 + (nearest.lon - foco.lon) ** 2;
+        return currentDistance < nearestDistance ? current : nearest;
+      }).name;
+
+      return {
+        id: foco.id,
+        type: 'incendio',
+        severity: 'baja',
+        lat: foco.lat,
+        lng: foco.lon,
+        title: 'Foco de calor · captura histórica NASA FIRMS',
+        description: 'Registro estático del 17/10/2026. La información disponible no incluye FRP, confianza ni satélite.',
+        timestamp: foco.timestamp,
+        municipality,
+        status: 'activo',
+        source: 'real',
+        localTime: foco.localTime,
+        historicalSnapshot: true,
+      };
+    }),
+    []
+  );
   const simulationId = fireSimulation?.event.id;
   const visibleEvents = useMemo(() => {
     if (mode === 'demo') return events;
@@ -492,14 +526,35 @@ export default function App() {
 
         {/* Map + Event list */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ minHeight: 420 }}>
-          <div className="lg:col-span-2 h-[420px]">
-            <MapView
-              events={filtered}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              pulseId={fireSimulation?.event.id}
-              resetToken={mapResetToken}
-            />
+          <div className="lg:col-span-2">
+            <div className="h-[420px]">
+              <MapView
+                events={showHistoricalSnapshot ? [...filtered, ...historicalEvents] : filtered}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                pulseId={fireSimulation?.event.id}
+                resetToken={mapResetToken}
+              />
+            </div>
+            {mode === 'real' && !fuegosLoading && !fuegosError && fuegoCount === 0 && !showHistoricalSnapshot && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTypeFilter('all');
+                  setSeverityFilter('all');
+                  setStatusFilter('all');
+                  setShowHistoricalSnapshot(true);
+                }}
+                className="mt-2 w-full rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25"
+              >
+                Ver ejemplo con focos históricos
+              </button>
+            )}
+            {showHistoricalSnapshot && (
+              <p className="mt-2 rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-sm font-bold text-amber-100">
+                Captura histórica NASA FIRMS · 17/10/2026, no es en tiempo real
+              </p>
+            )}
           </div>
           <div className="h-[420px] bg-slate-900/60 border border-slate-700/60 rounded-xl overflow-hidden flex flex-col">
             <EventList

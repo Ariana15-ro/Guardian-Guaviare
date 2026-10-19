@@ -115,13 +115,17 @@ export function MapView({ events, selectedId, onSelect, pulseId = null, resetTok
                   </p>
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <div>
-                      <span className="text-slate-500">Severidad:</span>{' '}
-                      <span className="font-medium">{severityLabel(ev.severity)}</span>
+                      <span className="text-slate-500">{ev.historicalSnapshot ? 'Registro:' : 'Severidad:'}</span>{' '}
+                      <span className="font-medium">
+                        {ev.historicalSnapshot ? 'captura histórica' : severityLabel(ev.severity)}
+                      </span>
                     </div>
-                    <div>
-                      <span className="text-slate-500">Estado:</span>{' '}
-                      <span className="font-medium capitalize">{ev.status.replace('_', ' ')}</span>
-                    </div>
+                    {!ev.historicalSnapshot && (
+                      <div>
+                        <span className="text-slate-500">Estado:</span>{' '}
+                        <span className="font-medium capitalize">{ev.status.replace('_', ' ')}</span>
+                      </div>
+                    )}
                     <div>
                       <span className="text-slate-500">Municipio:</span>{' '}
                       <span className="font-medium">{ev.municipality}</span>

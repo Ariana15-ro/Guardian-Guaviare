@@ -15,7 +15,7 @@ export function AlertHistory({ events, onSelect }: Props) {
   return (
     <section className="overflow-hidden rounded-xl border border-slate-700/60 bg-slate-800/50">
       <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-200">Historial de alertas</h2>
+        <h2 className="text-sm font-semibold text-slate-200">Eventos detectados</h2>
         <span className="text-xs text-slate-500">{alerts.length} recientes</span>
       </div>
       <div className="max-h-72 overflow-y-auto">
