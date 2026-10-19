@@ -4,9 +4,10 @@ import { DashboardStats } from '../types';
 interface Props {
   stats: DashboardStats;
   mode: 'real' | 'demo';
+  historicalFocos?: number;
 }
 
-export function StatsCards({ stats, mode }: Props) {
+export function StatsCards({ stats, mode, historicalFocos = 0 }: Props) {
   const cards = [
     {
       label: 'Eventos Activos',
@@ -23,8 +24,16 @@ export function StatsCards({ stats, mode }: Props) {
       iconColor: 'text-orange-400',
     },
     {
-      label: mode === 'real' ? 'Focos de calor · FIRMS' : 'Focos de calor · demo',
-      value: stats.incendios,
+      label: historicalFocos > 0
+        ? 'Focos de calor · NASA FIRMS'
+        : mode === 'real'
+          ? 'Focos de calor · FIRMS'
+          : 'Focos de calor · demo',
+      value: historicalFocos > 0
+        ? stats.incendios > 0
+          ? `${stats.incendios} + ${historicalFocos} hist.`
+          : `${historicalFocos} focos (histórico)`
+        : stats.incendios,
       icon: Flame,
       color: 'from-red-500/20 to-red-600/5 border-red-500/30',
       iconColor: 'text-red-400',
@@ -53,16 +62,18 @@ export function StatsCards({ stats, mode }: Props) {
   ];
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 sm:gap-3">
       {cards.map((card) => (
         <div
           key={card.label}
-          className={`bg-gradient-to-br ${card.color} border rounded-xl p-4 backdrop-blur-sm`}
+          className={`bg-gradient-to-br ${card.color} border rounded-xl p-3 sm:p-4 backdrop-blur-sm`}
         >
           <div className="flex items-center justify-between mb-2">
             <card.icon className={`w-5 h-5 ${card.iconColor}`} />
           </div>
-          <div className="text-2xl font-bold text-white tracking-tight">{card.value}</div>
+          <div className={`${typeof card.value === 'string' ? 'text-base sm:text-lg' : 'text-2xl'} break-words font-bold text-white tracking-tight`}>
+            {card.value}
+          </div>
           <div className="text-xs text-slate-400 mt-1">{card.label}</div>
         </div>
       ))}

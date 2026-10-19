@@ -7,13 +7,20 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAlert: (event: SensorEvent) => void;
+  historicalSnapshot?: boolean;
 }
 
-export function EventList({ events, selectedId, onSelect, onAlert }: Props) {
+export function EventList({ events, selectedId, onSelect, onAlert, historicalSnapshot = false }: Props) {
   return (
     <div className="flex flex-col h-full">
       <div className="px-4 py-3 border-b border-slate-700/60 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-200">Eventos recientes</h2>
+        <h2 className="text-sm font-semibold text-slate-200">
+          {historicalSnapshot
+            ? events.some((event) => !event.historicalSnapshot)
+              ? 'Focos reales e históricos'
+              : `${events.length} focos (histórico)`
+            : 'Eventos recientes'}
+        </h2>
         <span className="text-xs text-slate-500">{events.length} total</span>
       </div>
 
@@ -37,8 +44,8 @@ export function EventList({ events, selectedId, onSelect, onAlert }: Props) {
                       {severityLabel(ev.severity)}
                     </span>
                     <span className="text-[10px] text-slate-500">{typeLabel(ev.type)}</span>
-                    <span className={`text-[9px] font-semibold uppercase ${ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
-                      {ev.source === 'real' ? 'Real' : 'Simulado'}
+                    <span className={`text-[9px] font-semibold uppercase ${ev.historicalSnapshot ? 'text-purple-300' : ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
+                      {ev.historicalSnapshot ? 'HISTÓRICO' : ev.source === 'real' ? 'Real' : 'Simulado'}
                     </span>
                   </div>
                   <p className="text-sm text-slate-200 truncate leading-snug">{ev.title}</p>

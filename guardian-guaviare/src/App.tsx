@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useMemo, useCallback, useEffect } from 'react';
+import { lazy, Suspense, useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { SensorEvent, AlertLog, EventType, Severity, DashboardStats, LiveIndicators as LiveIndicatorValues } from './types';
 import { generateInitialEvents, generateEvent, generateFireEvent, generateLiveIndicators, generateRealisticBurst } from './data/generator';
 import { StatsCards } from './components/StatsCards';
@@ -9,7 +9,7 @@ import { MapView } from './components/MapView';
 import { Filters } from './components/Filters';
 import { AlertModal } from './components/AlertModal';
 import { AlertLogPanel } from './components/AlertLogPanel';
-import { Shield, Flame, TreePine, Waves, Activity, RotateCcw, Volume2 } from 'lucide-react';
+import { Shield, Flame, TreePine, Waves, Activity, RotateCcw, Volume2, Filter } from 'lucide-react';
 import { fetchFuegos, type FuegoReal } from './services/fuegosApi';
 
 const TrendCharts = lazy(() =>
@@ -97,6 +97,58 @@ function computeStats(events: SensorEvent[], alerts: AlertLog[], mode: DataMode)
   };
 }
 
+function SimulationControls({
+  onFire,
+  onDeforestation,
+  onRiver,
+  fireDisabled,
+  mobile = false,
+}: {
+  onFire: () => void;
+  onDeforestation: () => void;
+  onRiver: () => void;
+  fireDisabled: boolean;
+  mobile?: boolean;
+}) {
+  const buttonClass = mobile
+    ? 'flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 py-2 text-[10px] font-semibold'
+    : 'flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-2 text-xs transition';
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onFire}
+        disabled={fireDisabled}
+        className={`${buttonClass} border border-red-500/30 bg-red-500/15 text-red-300 hover:bg-red-500/25 disabled:opacity-50`}
+        title="Simular foco de calor"
+        aria-label="Simular foco de calor"
+      >
+        <Flame className="h-4 w-4" />
+        <span>{mobile ? 'SIMULACRO' : 'SIMULACRO · Foco de calor'}</span>
+      </button>
+      <button
+        type="button"
+        onClick={onDeforestation}
+        className={`${buttonClass} border border-orange-500/30 bg-orange-500/15 text-orange-300 hover:bg-orange-500/25`}
+        title="Simular deforestación"
+      >
+        <TreePine className="h-4 w-4" />
+        <span>Deforestación</span>
+      </button>
+      <button
+        type="button"
+        onClick={onRiver}
+        className={`${buttonClass} border border-blue-500/30 bg-blue-500/15 text-blue-300 hover:bg-blue-500/25`}
+        title="Simular nivel de río"
+      >
+        <Waves className="h-4 w-4" />
+        <span>Río</span>
+      </button>
+    </>
+  );
+}
+
 async function playNotificationSound(): Promise<void> {
   const AudioContextConstructor = window.AudioContext;
   if (!AudioContextConstructor) throw new Error('Este navegador no permite reproducir el sonido de notificación.');
@@ -132,6 +184,10 @@ export default function App() {
   const [fuegosError, setFuegosError] = useState<string | null>(null);
   const [fuegosLoading, setFuegosLoading] = useState(true);
   const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(false);
+  const historicalQueryPending = useRef(
+    new URLSearchParams(window.location.search).get('demo') === 'historico'
+  );
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [liveState, setLiveState] = useState<LiveDashboardState>(() => {
     const indicators = generateLiveIndicators();
     indicators.heatSpots = 0;
@@ -196,6 +252,13 @@ export default function App() {
     }),
     []
   );
+  const focoEventsForFrame = useMemo(() => {
+    const realFocos = mode === 'real' ? fuegoEvents : [];
+    return showHistoricalSnapshot
+      ? [...realFocos, ...historicalEvents]
+      : realFocos;
+  }, [fuegoEvents, historicalEvents, mode, showHistoricalSnapshot]);
+  const mapFrameKey = `${mode}:${focoEventsForFrame.map((event) => event.id).join(',')}`;
   const simulationId = fireSimulation?.event.id;
   const visibleEvents = useMemo(() => {
     if (mode === 'demo') return events;
@@ -212,6 +275,10 @@ export default function App() {
       setFetchedAt(response.fetchedAt);
       setFuegosError(null);
       setFuegosLoading(false);
+      if (historicalQueryPending.current) {
+        historicalQueryPending.current = false;
+        if (response.hotspots.length === 0) setShowHistoricalSnapshot(true);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error de conexión con NASA FIRMS.';
       setFuegosError(message);
@@ -296,6 +363,17 @@ export default function App() {
     });
   }, [visibleEvents, typeFilter, severityFilter, statusFilter]);
 
+  const mapEvents = useMemo(
+    () => showHistoricalSnapshot
+      ? [...filtered, ...historicalEvents]
+      : filtered,
+    [filtered, historicalEvents, showHistoricalSnapshot]
+  );
+  const historicalListEvents = showHistoricalSnapshot
+    ? fuegoCount > 0
+      ? [...fuegoEvents, ...historicalEvents]
+      : historicalEvents
+    : filtered;
   const stats = useMemo(() => computeStats(visibleEvents, alerts, mode), [visibleEvents, alerts, mode]);
 
   const handleAlert = useCallback((event: SensorEvent) => {
@@ -377,6 +455,14 @@ export default function App() {
     setMapResetToken((previous) => previous + 1);
   };
 
+  const activateHistoricalSnapshot = () => {
+    historicalQueryPending.current = false;
+    setTypeFilter('all');
+    setSeverityFilter('all');
+    setStatusFilter('all');
+    setShowHistoricalSnapshot(true);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
       {/* Header */}
@@ -392,51 +478,33 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2 sm:justify-end">
+          <div className="hidden items-center justify-between gap-2 sm:flex sm:justify-end">
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full">
               <Activity className="w-3 h-3 animate-pulse" />
               En vivo
             </div>
-
-            <div className="flex gap-1.5">
-              <button
-                onClick={simulateFire}
-                className="flex flex-1 items-center justify-center gap-1.5 px-2.5 py-2 text-xs rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 hover:bg-red-500/25 transition sm:flex-none"
-                title="Simular foco de calor"
-                aria-label="Simular foco de calor"
-                disabled={fireSimulation !== null}
-                aria-disabled={fireSimulation !== null}
-              >
-                <Flame className="w-3.5 h-3.5" />
-                <span className="leading-tight text-center md:inline">SIMULACRO · Foco de calor</span>
-              </button>
-              <button
-                onClick={() => injectEvent('deforestacion')}
-                className="flex flex-1 items-center justify-center gap-1.5 px-2.5 py-2 text-xs rounded-lg bg-orange-500/15 border border-orange-500/30 text-orange-400 hover:bg-orange-500/25 transition sm:flex-none"
-                title="Simular deforestación"
-              >
-                <TreePine className="w-3.5 h-3.5" />
-                <span className="md:inline">Deforestación</span>
-              </button>
-              <button
-                onClick={() => injectEvent('nivel_rio')}
-                className="flex flex-1 items-center justify-center gap-1.5 px-2.5 py-2 text-xs rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-400 hover:bg-blue-500/25 transition sm:flex-none"
-                title="Simular nivel de río"
-              >
-                <Waves className="w-3.5 h-3.5" />
-                <span className="md:inline">Río</span>
-              </button>
-            </div>
+            <SimulationControls
+              onFire={simulateFire}
+              onDeforestation={() => injectEvent('deforestacion')}
+              onRiver={() => injectEvent('nivel_rio')}
+              fireDisabled={fireSimulation !== null}
+            />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 space-y-4 px-4 py-4">
+      <main className="mx-auto w-full max-w-[1600px] min-w-0 flex-1 space-y-2 px-3 pb-28 pt-3 sm:space-y-4 sm:px-4 sm:py-4 sm:pb-4">
         <section className="flex flex-col gap-3 rounded-xl border border-slate-700/60 bg-slate-900/70 p-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-slate-100">Focos de calor</h2>
             <p className="mt-1 text-xs text-slate-400">
-              {mode === 'real' ? 'NASA FIRMS (VIIRS)' : 'Modo demo · focos de calor sintéticos'}
+              {showHistoricalSnapshot
+                ? fuegoCount > 0
+                  ? `${fuegoCount} focos reales + 4 históricos`
+                  : '4 focos (histórico)'
+                : mode === 'real'
+                  ? 'NASA FIRMS (VIIRS)'
+                  : 'Modo demo · focos de calor sintéticos'}
               {mode === 'real' && fetchedAt && (
                 <> · Última actualización: hace {Math.max(0, Math.floor((Date.now() - Date.parse(fetchedAt)) / 60_000))} min</>
               )}
@@ -478,7 +546,102 @@ export default function App() {
           </p>
         )}
         {/* Stats */}
-        <StatsCards stats={stats} mode={mode} />
+        <StatsCards
+          stats={stats}
+          mode={mode}
+          historicalFocos={showHistoricalSnapshot ? historicalEvents.length : 0}
+        />
+
+        {/* Map + Event list */}
+        <div className="grid min-h-[420px] grid-cols-1 gap-3 lg:grid-cols-3 sm:gap-4">
+          <div className="min-w-0 lg:col-span-2">
+            <div className="h-[360px] sm:h-[420px]">
+              <MapView
+                events={mapEvents}
+                focusEvents={focoEventsForFrame}
+                frameKey={mapFrameKey}
+                selectedId={selectedId}
+                onSelect={setSelectedId}
+                pulseId={fireSimulation?.event.id}
+                resetToken={mapResetToken}
+              />
+            </div>
+            {mode === 'real' && !fuegosLoading && !fuegosError && (
+              <div className="mt-2 flex flex-col gap-2">
+                {showHistoricalSnapshot && (
+                  <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
+                    Captura histórica NASA FIRMS · 17/10/2026 · no es tiempo real · región del Guaviare y zona de influencia
+                  </p>
+                )}
+                {showHistoricalSnapshot ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowHistoricalSnapshot(false);
+                      setSelectedId(null);
+                    }}
+                    className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
+                  >
+                    Volver a datos en vivo
+                  </button>
+                ) : fuegoCount === 0 ? (
+                  <button
+                    type="button"
+                    onClick={activateHistoricalSnapshot}
+                    className="w-full rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25"
+                  >
+                    Ver ejemplo con focos históricos
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </div>
+          <div className="flex h-[360px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900/60 sm:h-[420px]">
+            <EventList
+              events={historicalListEvents}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onAlert={handleAlert}
+              historicalSnapshot={showHistoricalSnapshot}
+            />
+          </div>
+        </div>
+
+        <section className="rounded-xl border border-slate-700/60 bg-slate-900/50 p-2 sm:hidden">
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((open) => !open)}
+            className="flex w-full items-center gap-2 px-2 py-1 text-left text-sm font-medium text-slate-200"
+          >
+            <Filter className="h-4 w-4 text-slate-400" />
+            Filtros
+            <span className="ml-auto text-xs text-slate-400">{filtersOpen ? 'Ocultar' : 'Mostrar'}</span>
+          </button>
+          {filtersOpen && (
+            <div className="pt-2">
+              <Filters
+                typeFilter={typeFilter}
+                severityFilter={severityFilter}
+                statusFilter={statusFilter}
+                onTypeChange={setTypeFilter}
+                onSeverityChange={setSeverityFilter}
+                onStatusChange={setStatusFilter}
+              />
+            </div>
+          )}
+        </section>
+        <div className="hidden flex-wrap items-center gap-2 sm:flex">
+          <Filters
+            typeFilter={typeFilter}
+            severityFilter={severityFilter}
+            statusFilter={statusFilter}
+            onTypeChange={setTypeFilter}
+            onSeverityChange={setSeverityFilter}
+            onStatusChange={setStatusFilter}
+          />
+        </div>
+
         <LiveIndicators values={liveIndicators} mode={mode} />
         <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-slate-800/50" />}>
           <TrendCharts readings={trendReadings} mode={mode} />
@@ -519,60 +682,6 @@ export default function App() {
           </section>
         )}
 
-        {/* Filters */}
-        <div className="flex flex-wrap items-center gap-2">
-          <Filters
-            typeFilter={typeFilter}
-            severityFilter={severityFilter}
-            statusFilter={statusFilter}
-            onTypeChange={setTypeFilter}
-            onSeverityChange={setSeverityFilter}
-            onStatusChange={setStatusFilter}
-          />
-        </div>
-
-        {/* Map + Event list */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4" style={{ minHeight: 420 }}>
-          <div className="lg:col-span-2">
-            <div className="h-[420px]">
-              <MapView
-                events={showHistoricalSnapshot ? [...filtered, ...historicalEvents] : filtered}
-                selectedId={selectedId}
-                onSelect={setSelectedId}
-                pulseId={fireSimulation?.event.id}
-                resetToken={mapResetToken}
-              />
-            </div>
-            {mode === 'real' && !fuegosLoading && !fuegosError && fuegoCount === 0 && !showHistoricalSnapshot && (
-              <button
-                type="button"
-                onClick={() => {
-                  setTypeFilter('all');
-                  setSeverityFilter('all');
-                  setStatusFilter('all');
-                  setShowHistoricalSnapshot(true);
-                }}
-                className="mt-2 w-full rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25"
-              >
-                Ver ejemplo con focos históricos
-              </button>
-            )}
-            {showHistoricalSnapshot && (
-              <p className="mt-2 rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-sm font-bold text-amber-100">
-                Captura histórica NASA FIRMS · 17/10/2026 · no es en tiempo real · región del Guaviare y zona de influencia
-              </p>
-            )}
-          </div>
-          <div className="h-[420px] bg-slate-900/60 border border-slate-700/60 rounded-xl overflow-hidden flex flex-col">
-            <EventList
-              events={filtered}
-              selectedId={selectedId}
-              onSelect={setSelectedId}
-              onAlert={handleAlert}
-            />
-          </div>
-        </div>
-
         {/* Charts + Alert log */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="min-w-0 lg:col-span-2">
@@ -588,6 +697,21 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      <nav
+        aria-label="Acciones de simulación"
+        className="fixed inset-x-0 bottom-0 z-[1100] border-t border-slate-700 bg-slate-950/95 px-2 pt-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-[0_-8px_24px_rgba(2,6,23,0.7)] backdrop-blur sm:hidden"
+      >
+        <div className="mx-auto flex max-w-md gap-2">
+          <SimulationControls
+            mobile
+            onFire={simulateFire}
+            onDeforestation={() => injectEvent('deforestacion')}
+            onRiver={() => injectEvent('nivel_rio')}
+            fireDisabled={fireSimulation !== null}
+          />
+        </div>
+      </nav>
 
       <footer className="border-t border-slate-800 py-3 text-center text-[11px] text-slate-600">
         <p>Guardián del Guaviare · Proyecto de demostración; no es un sistema oficial de alerta.</p>
