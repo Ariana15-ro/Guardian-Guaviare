@@ -1,0 +1,31 @@
+{
+  "name": "Guardián del Guaviare",
+  "short_name": "Guardián",
+  "description": "Monitoreo ambiental: focos de calor, deforestación y ríos (proyecto de demostración)",
+  "lang": "es",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0B1F1A",
+  "theme_color": "#0B1F1A",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

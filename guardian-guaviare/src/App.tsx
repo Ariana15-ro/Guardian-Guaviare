@@ -9,7 +9,7 @@ import { MapView } from './components/MapView';
 import { Filters } from './components/Filters';
 import { AlertModal } from './components/AlertModal';
 import { AlertLogPanel } from './components/AlertLogPanel';
-import { Shield, Flame, TreePine, Waves, Activity, RotateCcw, Volume2, Filter } from 'lucide-react';
+import { Flame, TreePine, Waves, Activity, RotateCcw, Volume2, Filter } from 'lucide-react';
 import { fetchFuegos, type FuegoReal } from './services/fuegosApi';
 
 const TrendCharts = lazy(() =>
@@ -469,9 +469,12 @@ export default function App() {
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
         <div className="max-w-[1600px] mx-auto px-4 py-3 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-900/40">
-              <Shield className="w-5 h-5 text-white" />
-            </div>
+            <img
+              src="/logo-icon.png"
+              alt=""
+              aria-hidden="true"
+              className="h-11 w-11 shrink-0 object-contain"
+            />
             <div>
               <h1 className="text-lg font-bold tracking-tight text-white leading-none">Guardián del Guaviare</h1>
               <p className="text-[11px] text-slate-400 mt-0.5">Monitoreo de deforestación · focos de calor · ríos</p>
