@@ -1,6 +1,9 @@
+import { GUAVIARE_BBOX, isInsideGuaviare } from './guaviare-boundary.js';
+
 export interface FireHotspot {
   id: string;
   source: string;
+  inGuaviare: boolean;
   lat: number;
   lon: number;
   acqDate: string;
@@ -12,13 +15,6 @@ export interface FireHotspot {
   satellite: string;
 }
 
-export const GUAVIARE_BOUNDS = {
-  west: -74.0,
-  south: 0.8,
-  east: -71.0,
-  north: 3.3,
-}; // TODO: Este rectángulo es aproximado; se puede reemplazar por filtrado con el polígono del departamento.
-
 export const FIRMS_DAY_RANGE = 5;
 const FIRMS_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'] as const;
 const DEDUPLICATION_COORDINATE_DELTA = 0.005;
@@ -28,6 +24,7 @@ const MAX_NOTIFY_WINDOW_HOURS = 48;
 export interface FirmsHotspotsResult {
   hotspots: FireHotspot[];
   last5DaysCount: number;
+  last5DaysCountAll: number;
   lastDetection: string | null;
 }
 
@@ -119,6 +116,7 @@ export function parseFirmsCsv(csv: string, source: string): FireHotspot[] {
     hotspots.push({
       id: `${source.toLowerCase()}-${stableLat}-${stableLon}-${acqDate}-${acqTime}`,
       source,
+      inGuaviare: isInsideGuaviare(lat, lon),
       lat,
       lon,
       acqDate,
@@ -155,7 +153,7 @@ async function fetchFirmsSource(
   mapKey: string,
   dayRange: number
 ): Promise<FireHotspot[]> {
-  const { west, south, east, north } = GUAVIARE_BOUNDS;
+  const { west, south, east, north } = GUAVIARE_BBOX;
   const url =
     `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}` +
     `/${source}/${west},${south},${east},${north}/${dayRange}`;
@@ -198,12 +196,13 @@ export async function fetchFirmsHotspots(windowHours = 24): Promise<FirmsHotspot
       return age >= 0 && age <= fiveDayWindowMilliseconds;
     })
   );
+  const fiveDayHotspotsInGuaviare = fiveDayHotspots.filter((hotspot) => hotspot.inGuaviare);
   const windowMilliseconds = Math.max(0, windowHours) * 60 * 60 * 1000;
   const filteredHotspots = fiveDayHotspots.filter((hotspot) => {
     const age = now - Date.parse(hotspot.timestamp);
     return age >= 0 && age <= windowMilliseconds;
   });
-  const lastDetection = fiveDayHotspots.reduce<string | null>((latest, hotspot) =>
+  const lastDetection = fiveDayHotspotsInGuaviare.reduce<string | null>((latest, hotspot) =>
     latest === null || Date.parse(hotspot.timestamp) > Date.parse(latest)
     ? hotspot.timestamp
     : latest,
@@ -216,13 +215,16 @@ export async function fetchFirmsHotspots(windowHours = 24): Promise<FirmsHotspot
     fetchedHotspots.length,
     'unique hotspots in 5 days:',
     fiveDayHotspots.length,
+    'inside Guaviare:',
+    fiveDayHotspotsInGuaviare.length,
     'hotspots passing requested window:',
     filteredHotspots.length
   );
 
   return {
     hotspots: filteredHotspots,
-    last5DaysCount: fiveDayHotspots.length,
+    last5DaysCount: fiveDayHotspotsInGuaviare.length,
+    last5DaysCountAll: fiveDayHotspots.length,
     lastDetection,
   };
 }

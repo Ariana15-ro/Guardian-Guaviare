@@ -10,6 +10,7 @@ interface Props {
   onSelect: (id: string) => void;
   onAlert: (event: SensorEvent) => void;
   last5DaysCount: number;
+  influenceCount: number;
   lastDetection: string | null;
   loading: boolean;
   error: string | null;
@@ -90,6 +91,9 @@ function EventRow({
               <p>
                 a ~{nearestMunicipality.distance.toFixed(1)} km de {nearestMunicipality.name}
               </p>
+              <p className={event.inGuaviare ? 'text-emerald-300' : 'text-orange-300'}>
+                {event.inGuaviare ? 'Dentro del Guaviare' : 'Zona de influencia'}
+              </p>
             </div>
           )}
           <div className="mt-1.5 flex items-center justify-between">
@@ -136,6 +140,7 @@ export function EventList({
   onSelect,
   onAlert,
   last5DaysCount,
+  influenceCount,
   lastDetection,
   loading,
   error,
@@ -152,7 +157,11 @@ export function EventList({
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-200">Eventos detectados</h2>
-        <span className="text-xs text-slate-500">{realEvents.length} reales</span>
+        <span className="text-right text-[10px] leading-tight text-slate-400">
+          {realEvents.filter((event) => event.inGuaviare).length} dentro
+          <br />
+          {influenceCount} zona de influencia
+        </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -186,7 +195,7 @@ export function EventList({
           {historicalEvents.length > 0 && (
             <>
               <p className="border-b border-purple-500/20 bg-purple-500/5 px-4 py-2 text-[10px] font-semibold text-purple-200">
-                Captura histórica · no es tiempo real
+                Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
               </p>
               {historicalEvents.map((event) => (
                 <EventRow

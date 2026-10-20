@@ -39,15 +39,15 @@ const MUNICIPALITIES = [
   { name: 'Miraflores', lat: 1.3361, lon: -71.9511 },
 ];
 
-const HISTORICAL_FOCOS: Pick<
-  FuegoReal,
-  'id' | 'lat' | 'lon' | 'timestamp' | 'localTime' | 'confidence' | 'frp' | 'satellite'
->[] = [
-  { id: 'viirs-2.93185--72.43925-2026-10-17-1834', lat: 2.93185, lon: -72.43925, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 2.38, satellite: 'VIIRS' },
-  { id: 'viirs-2.97804--72.29705-2026-10-17-1834', lat: 2.97804, lon: -72.29705, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 2.23, satellite: 'VIIRS' },
-  { id: 'viirs-2.97862--72.29320-2026-10-17-1834', lat: 2.97862, lon: -72.29320, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 4.01, satellite: 'VIIRS' },
-  { id: 'viirs-2.98212--72.29372-2026-10-17-1834', lat: 2.98212, lon: -72.29372, timestamp: '2026-10-17T18:34:00.000Z', localTime: '17/10/2026, 13:34', confidence: 'n', frp: 3.78, satellite: 'VIIRS' },
-];
+interface HistoricalHotspot {
+  lat: number;
+  lon: number;
+  acqDate: string;
+  acqTime: string;
+  satellite: string;
+  frp: number;
+  confidence: 'l' | 'n' | 'h';
+}
 
 function toFireEvent(fire: FuegoReal): SensorEvent {
   const municipality = MUNICIPALITIES.reduce((nearest, current) => {
@@ -70,6 +70,7 @@ function toFireEvent(fire: FuegoReal): SensorEvent {
     municipality,
     status: 'activo',
     source: 'real',
+    inGuaviare: fire.inGuaviare,
     confidence: fire.confidence,
     frp: fire.frp,
     localTime: fire.localTime,
@@ -92,7 +93,10 @@ function computeStats(events: SensorEvent[], alerts: AlertLog[], mode: DataMode)
     totalActivos: activos.length,
     deforestacion: events.filter((e) => e.type === 'deforestacion' && e.status === 'activo').length,
     incendios: events.filter(
-      (e) => e.type === 'incendio' && e.status === 'activo' && (mode === 'demo' || e.source === 'real')
+      (e) =>
+        e.type === 'incendio' &&
+        e.status === 'activo' &&
+        (mode === 'demo' ? e.source !== 'real' : e.source === 'real' && e.inGuaviare === true)
     ).length,
     nivelesRio: events.filter((e) => e.type === 'nivel_rio' && e.status === 'activo').length,
     hectareasEstimadas: events
@@ -189,6 +193,7 @@ export default function App() {
   const [events, setEvents] = useState<SensorEvent[]>(() => generateInitialEvents(52));
   const [mode, setMode] = useState<DataMode>('real');
   const [showSimulation, setShowSimulation] = useState(false);
+  const emptyStateTest = new URLSearchParams(window.location.search).get('demo') === 'vacio';
   const [fuegos, setFuegos] = useState<FuegoReal[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [last5DaysCount, setLast5DaysCount] = useState(0);
@@ -196,6 +201,7 @@ export default function App() {
   const [fuegosError, setFuegosError] = useState<string | null>(null);
   const [fuegosLoading, setFuegosLoading] = useState(true);
   const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(false);
+  const [historicalFocos, setHistoricalFocos] = useState<HistoricalHotspot[]>([]);
   const historicalQueryPending = useRef(
     new URLSearchParams(window.location.search).get('demo') === 'historico'
   );
@@ -233,43 +239,55 @@ export default function App() {
       .map(toFireEvent),
     [fuegos]
   );
-  const fuegoCount = fuegoEvents.length;
+  const displayedFuegoEvents = useMemo(() => emptyStateTest ? [] : fuegoEvents, [emptyStateTest, fuegoEvents]);
+  const displayedInsideFuegoEvents = displayedFuegoEvents.filter((fire) => fire.inGuaviare);
+  const displayedInfluenceFuegoEvents = displayedFuegoEvents.filter((fire) => !fire.inGuaviare);
+  const fuegoCount = displayedInsideFuegoEvents.length;
   const historicalEvents = useMemo(
-    () => HISTORICAL_FOCOS.map((foco): SensorEvent => {
+    () => historicalFocos.map((foco): SensorEvent => {
+      const timestamp = new Date(`${foco.acqDate}T${foco.acqTime.slice(0, 2)}:${foco.acqTime.slice(2)}:00Z`).toISOString();
       const municipality = MUNICIPALITIES.reduce((nearest, current) => {
         const currentDistance = (current.lat - foco.lat) ** 2 + (current.lon - foco.lon) ** 2;
         const nearestDistance = (nearest.lat - foco.lat) ** 2 + (nearest.lon - foco.lon) ** 2;
         return currentDistance < nearestDistance ? current : nearest;
       }).name;
+      const localTime = formatBogotaDateTime(timestamp);
+      const source = foco.satellite === 'N21'
+        ? 'VIIRS_NOAA21_NRT'
+        : foco.satellite === 'N20'
+          ? 'VIIRS_NOAA20_NRT'
+          : 'VIIRS_SNPP_NRT';
 
       return {
-        id: foco.id,
+        id: `historic-${foco.lat.toFixed(5)}-${foco.lon.toFixed(5)}-${foco.acqDate}-${foco.acqTime}`,
         type: 'incendio',
         severity: 'baja',
         lat: foco.lat,
         lng: foco.lon,
         title: 'Foco de calor · captura histórica NASA FIRMS',
         description: 'Captura estática de la región del Guaviare y zona de influencia. Detección satelital, no confirmada.',
-        timestamp: foco.timestamp,
+        timestamp,
         value: foco.frp,
         municipality,
         status: 'activo',
         source: 'real',
-        localTime: foco.localTime,
+        inGuaviare: true,
+        localTime,
         confidence: foco.confidence,
         frp: foco.frp,
         satellite: foco.satellite,
+        firmsSource: source,
         historicalSnapshot: true,
       };
     }),
-    []
+    [historicalFocos]
   );
   const focoEventsForFrame = useMemo(() => {
-    const realFocos = mode === 'real' ? fuegoEvents : [];
+    const realFocos = mode === 'real' ? displayedFuegoEvents : [];
     return showHistoricalSnapshot
       ? [...realFocos, ...historicalEvents]
       : realFocos;
-  }, [fuegoEvents, historicalEvents, mode, showHistoricalSnapshot]);
+  }, [displayedFuegoEvents, historicalEvents, mode, showHistoricalSnapshot]);
   const mapFrameKey = `${mode}:${focoEventsForFrame.map((event) => event.id).join(',')}`;
   const simulationId = fireSimulation?.event.id;
   const visibleEvents = useMemo(() => {
@@ -277,8 +295,8 @@ export default function App() {
     const syntheticEvents = events.filter(
       (event) => event.type !== 'incendio' || event.id === simulationId
     );
-    return [...fuegoEvents, ...syntheticEvents];
-  }, [events, fuegoEvents, mode, simulationId]);
+    return [...displayedFuegoEvents, ...syntheticEvents];
+  }, [events, displayedFuegoEvents, mode, simulationId]);
 
   const refreshFuegos = useCallback(async () => {
     try {
@@ -291,7 +309,7 @@ export default function App() {
       setFuegosLoading(false);
       if (historicalQueryPending.current) {
         historicalQueryPending.current = false;
-        if (response.hotspots.length === 0) setShowHistoricalSnapshot(true);
+        if (!response.hotspots.some((hotspot) => hotspot.inGuaviare)) setShowHistoricalSnapshot(true);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error de conexión con NASA FIRMS.';
@@ -300,6 +318,37 @@ export default function App() {
       setMode('demo');
       setShowSimulation(true);
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadHistoricalFocos = async () => {
+      try {
+        const response = await fetch('/focos-historicos-guaviare.json');
+        if (!response.ok) throw new Error(`No se pudo cargar la captura histórica (${response.status}).`);
+        const payload = await response.json() as HistoricalHotspot[];
+        if (!Array.isArray(payload) || payload.some((foco) =>
+          !Number.isFinite(foco.lat) ||
+          !Number.isFinite(foco.lon) ||
+          typeof foco.acqDate !== 'string' ||
+          typeof foco.acqTime !== 'string' ||
+          typeof foco.satellite !== 'string' ||
+          !Number.isFinite(foco.frp) ||
+          !['l', 'n', 'h'].includes(foco.confidence)
+        )) {
+          throw new Error('El archivo de focos históricos tiene un formato inválido.');
+        }
+        if (!cancelled) setHistoricalFocos(payload);
+      } catch (error) {
+        if (!cancelled) {
+          console.error(error instanceof Error ? error.message : String(error));
+        }
+      }
+    };
+    void loadHistoricalFocos();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -382,7 +431,7 @@ export default function App() {
     () => filtered.filter((event) => event.source !== 'real'),
     [filtered]
   );
-  const realListEvents = fuegoEvents;
+  const realListEvents = displayedFuegoEvents;
   const historicalListEvents = showHistoricalSnapshot ? historicalEvents : [];
   const mapEvents = useMemo(
     () => [
@@ -520,17 +569,25 @@ export default function App() {
             <p className="mt-1 text-xs text-slate-400">
               {showHistoricalSnapshot
                 ? fuegoCount > 0
-                  ? `${fuegoCount} focos reales + 4 históricos`
-                  : '4 focos (histórico)'
+                  ? `${fuegoCount} focos reales + ${historicalEvents.length} históricos`
+                  : `${historicalEvents.length} focos (histórico)`
                 : mode === 'real'
-                  ? 'NASA FIRMS (VIIRS)'
+                  ? 'NASA FIRMS · VIIRS (SNPP, NOAA-20, NOAA-21)'
                   : 'Modo demo · focos de calor sintéticos'}
+              {mode === 'real' && displayedInfluenceFuegoEvents.length > 0 && (
+                <> · <span className="text-[11px] text-slate-500">{displayedInfluenceFuegoEvents.length} en zona de influencia</span></>
+              )}
               {mode === 'real' && fetchedAt && (
                 <> · Última actualización: hace {Math.max(0, Math.floor((Date.now() - Date.parse(fetchedAt)) / 60_000))} min</>
               )}
             </p>
             {mode === 'real' && (
               <p className="mt-1 text-xs text-amber-300">Detección satelital, no confirmada.</p>
+            )}
+            {emptyStateTest && (
+              <p className="mt-1 inline-flex rounded border border-purple-400/40 bg-purple-500/10 px-2 py-1 text-xs font-semibold text-purple-200">
+                Prueba de estado vacío
+              </p>
             )}
           </div>
           <div className="flex flex-wrap gap-2" role="group" aria-label="Modo de datos">
@@ -598,7 +655,7 @@ export default function App() {
               <div className="mt-2 flex flex-col gap-2">
                 {showHistoricalSnapshot && (
                   <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
-                    Captura histórica NASA FIRMS · 17/10/2026 · no es tiempo real · región del Guaviare y zona de influencia
+                    Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
                   </p>
                 )}
                 {showHistoricalSnapshot ? (
@@ -636,6 +693,7 @@ export default function App() {
               }}
               onAlert={handleAlert}
               last5DaysCount={last5DaysCount}
+              influenceCount={displayedInfluenceFuegoEvents.length}
               lastDetection={lastDetection}
               loading={fuegosLoading}
               error={fuegosError}
@@ -752,11 +810,12 @@ export default function App() {
       <footer className="border-t border-slate-800 py-3 text-center text-[11px] text-slate-600">
         <p>Guardián del Guaviare · Proyecto de demostración; no es un sistema oficial de alerta.</p>
         <p className="mt-1">
-          Fuentes: <a className="text-slate-400 underline" href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noreferrer">NASA FIRMS (VIIRS)</a>
+          Fuentes: <a className="text-slate-400 underline" href="https://firms.modaps.eosdis.nasa.gov/" target="_blank" rel="noreferrer">NASA FIRMS · VIIRS (SNPP, NOAA-20, NOAA-21)</a>
           {' · '}
           <a className="text-slate-400 underline" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>
           {' · '}Río y deforestación: datos simulados.
         </p>
+        <p className="mt-1">Límites: geoBoundaries · © OpenStreetMap contributors (ODbL)</p>
       </footer>
 
       <AlertModal

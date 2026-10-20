@@ -1,6 +1,7 @@
 export interface FuegoReal {
   id: string;
   source: string;
+  inGuaviare: boolean;
   lat: number;
   lon: number;
   acqDate: string;
@@ -17,6 +18,7 @@ export interface FuegosResponse {
   fetchedAt: string;
   hotspots: FuegoReal[];
   last5DaysCount: number;
+  last5DaysCountAll: number;
   lastDetection: string | null;
 }
 
@@ -43,6 +45,8 @@ export async function fetchFuegos(): Promise<FuegosResponse> {
         !Array.isArray(payload.hotspots) ||
         !payload.fetchedAt ||
         !Number.isInteger(payload.last5DaysCount) ||
+        !Number.isInteger(payload.last5DaysCountAll) ||
+        payload.hotspots.some((hotspot) => typeof hotspot.inGuaviare !== 'boolean') ||
         !(payload.lastDetection === null || typeof payload.lastDetection === 'string')
       ) {
         throw new Error('La respuesta de la API de incendios tiene un formato inválido.');

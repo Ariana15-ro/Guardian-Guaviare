@@ -16,6 +16,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       fetchedAt: new Date().toISOString(),
       hotspots: result.hotspots,
       last5DaysCount: result.last5DaysCount,
+      last5DaysCountAll: result.last5DaysCountAll,
       lastDetection: result.lastDetection,
     });
   } catch (error) {

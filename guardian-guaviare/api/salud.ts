@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { getNotifyWindowHours, GUAVIARE_BOUNDS } from './_lib/firms.js';
+import { getNotifyWindowHours } from './_lib/firms.js';
+import { GUAVIARE_BBOX } from './_lib/guaviare-boundary.js';
 
 const CHECK_TIMEOUT_MS = 10_000;
 const FIRMS_REQUIRED_COLUMNS = [
@@ -26,7 +27,7 @@ async function checkFirms(): Promise<void> {
   const mapKey = process.env.FIRMS_MAP_KEY;
   if (!mapKey) throw new Error('FIRMS health check failed: API key is not configured.');
 
-  const { west, south, east, north } = GUAVIARE_BOUNDS;
+  const { west, south, east, north } = GUAVIARE_BBOX;
   const url =
     `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}` +
     `/VIIRS_SNPP_NRT/${west},${south},${east},${north}/1`;

@@ -276,6 +276,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     const now = Date.now();
     const eligible = allHotspots.filter(
       (hotspot) =>
+        hotspot.inGuaviare &&
         (hotspot.confidence === 'n' || hotspot.confidence === 'h') &&
         hotspot.frp >= minimumFrp &&
         isRecent(hotspot, now, notifyWindowHours)

@@ -15,6 +15,7 @@ export interface SensorEvent {
   municipality: string;
   status: 'activo' | 'resuelto' | 'en_monitoreo';
   source?: 'real' | 'simulated';
+  inGuaviare?: boolean;
   confidence?: 'l' | 'n' | 'h';
   frp?: number;
   localTime?: string;

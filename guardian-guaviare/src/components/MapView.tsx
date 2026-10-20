@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MapContainer, TileLayer, CircleMarker, GeoJSON as LeafletGeoJSON, Popup, useMap } from 'react-leaflet';
 import type { CircleMarker as LeafletCircleMarker } from 'leaflet';
+import type { GeoJsonObject } from 'geojson';
 import { SensorEvent, EventType } from '../types';
 import { formatDate, typeLabel, severityLabel, typeIcon } from '../utils/format';
 import 'leaflet/dist/leaflet.css';
@@ -141,9 +142,37 @@ export function MapView({
 }: Props) {
   const center = useMemo(() => [2.3, -72.6] as [number, number], []);
   const markers = useRef(new Map<string, LeafletCircleMarker | null>());
+  const [boundary, setBoundary] = useState<GeoJsonObject | null>(null);
+  const [boundaryError, setBoundaryError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadBoundary = async () => {
+      try {
+        const response = await fetch('/guaviare.geojson');
+        if (!response.ok) throw new Error(`El contorno respondió con estado ${response.status}.`);
+        const geoJson = await response.json() as GeoJsonObject;
+        if (!cancelled) setBoundary(geoJson);
+      } catch (error) {
+        if (!cancelled) {
+          console.error(error instanceof Error ? error.message : String(error));
+          setBoundaryError(true);
+        }
+      }
+    };
+    void loadBoundary();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-700/60">
+      {boundaryError && (
+        <p role="status" className="absolute bottom-3 left-3 z-[1000] rounded bg-slate-900/90 px-2 py-1 text-[10px] text-amber-200">
+          No se pudo cargar el contorno departamental.
+        </p>
+      )}
       <label className="absolute left-3 top-3 z-[1000] flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow">
         <input
           type="checkbox"
@@ -166,6 +195,14 @@ export function MapView({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
 
+        {boundary && (
+          <LeafletGeoJSON
+            data={boundary}
+            interactive={false}
+            style={{ color: '#86efac', weight: 1.25, fillColor: '#86efac', fillOpacity: 0.06 }}
+          />
+        )}
+
         <MapBehavior
           markers={markers}
           focusEvents={focusEvents}
@@ -177,15 +214,16 @@ export function MapView({
         {events.map((ev) => {
           const isSelected = ev.id === selectedId;
           const isPulsing = ev.id === pulseId;
-          const isRealHotspot = ev.type === 'incendio' && ev.source === 'real' && !ev.historicalSnapshot;
-          const color = ev.historicalSnapshot ? '#c084fc' : TYPE_COLORS[ev.type];
+          const isRealHotspot = ev.type === 'incendio' && ev.source === 'real' && ev.inGuaviare === true;
+          const isInfluenceHotspot = ev.type === 'incendio' && ev.source === 'real' && ev.inGuaviare === false;
+          const color = isInfluenceHotspot ? '#fb923c' : ev.historicalSnapshot ? '#c084fc' : TYPE_COLORS[ev.type];
           const radius = SEVERITY_RADIUS[ev.severity] ?? 10;
 
           return (
             <CircleMarker
               key={ev.id}
               center={[ev.lat, ev.lng]}
-              radius={isSelected ? radius + 4 : isRealHotspot ? Math.max(radius, 13) : radius}
+              radius={isSelected ? radius + 4 : isRealHotspot ? Math.max(radius, 13) : isInfluenceHotspot ? 8 : radius}
               ref={(layer) => {
                 if (layer) markers.current.set(ev.id, layer);
                 else markers.current.delete(ev.id);
@@ -194,7 +232,7 @@ export function MapView({
                 className: isPulsing ? 'fire-pulse' : undefined,
                 color: isPulsing ? '#ef4444' : isSelected ? '#fff' : isRealHotspot ? '#fef08a' : color,
                 fillColor: isPulsing ? '#ef4444' : isRealHotspot ? '#ef4444' : color,
-                fillOpacity: isSelected ? 0.95 : ev.historicalSnapshot ? 0.95 : isRealHotspot ? 0.95 : 0.4,
+                fillOpacity: isSelected ? 0.95 : isRealHotspot ? 0.95 : isInfluenceHotspot ? 0.45 : ev.historicalSnapshot ? 0.95 : 0.4,
                 weight: isRealHotspot || isSelected ? 3 : 1.5,
                 dashArray: ev.historicalSnapshot ? '2 3' : ev.source === 'real' ? undefined : '4 3',
               }}
@@ -213,6 +251,11 @@ export function MapView({
                   <p className={`mb-2 text-[10px] font-semibold uppercase tracking-wide ${ev.historicalSnapshot ? 'text-purple-300' : ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
                     {ev.historicalSnapshot ? 'Captura histórica · NASA FIRMS' : ev.source === 'real' ? 'Dato real · NASA FIRMS' : 'Dato simulado'}
                   </p>
+                  {ev.type === 'incendio' && ev.source === 'real' && (
+                    <p className={`mb-2 text-xs font-semibold ${ev.inGuaviare ? 'text-emerald-300' : 'text-orange-300'}`}>
+                      {ev.inGuaviare ? 'Dentro del Guaviare' : 'Zona de influencia'}
+                    </p>
+                  )}
                   <div className="grid grid-cols-2 gap-1 text-xs">
                     <div>
                       <span className="text-slate-500">{ev.historicalSnapshot ? 'Registro:' : 'Severidad:'}</span>{' '}
