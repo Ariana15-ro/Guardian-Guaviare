@@ -87,6 +87,9 @@ function nearestPlace(hotspots: FireHotspot[]): string {
     return distance < closest.distance ? { name: municipality.name, distance } : closest;
   }, { name: '', distance: Number.POSITIVE_INFINITY });
 
+  if (nearest.distance > 80) {
+    return 'zona de influencia, a más de 80 km de cualquier cabecera del Guaviare';
+  }
   return `a ~${Math.round(nearest.distance)} km de ${nearest.name}`;
 }
 
@@ -214,7 +217,7 @@ async function publish(group: HotspotGroup): Promise<void> {
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
     body: JSON.stringify({
       topic,
-      title: 'Foco de calor en la región del Guaviare',
+      title: 'Foco de calor en la zona de influencia del Guaviare',
       message,
       priority: confidence === 'h' ? 5 : 4,
       tags: ['fire', 'warning'],
