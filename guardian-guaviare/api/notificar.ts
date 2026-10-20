@@ -16,6 +16,17 @@ interface HotspotGroup {
   hotspots: FireHotspot[];
 }
 
+function getNotifyMinFrp(): number {
+  const configuredFrp = process.env.NOTIFY_MIN_FRP;
+  if (configuredFrp === undefined || configuredFrp.trim() === '') return 0.4;
+
+  const minimumFrp = Number(configuredFrp);
+  if (!Number.isFinite(minimumFrp) || minimumFrp < 0) {
+    throw new Error('NOTIFY_MIN_FRP debe ser un número no negativo.');
+  }
+  return minimumFrp;
+}
+
 function authorizationHeader(req: VercelRequest): string | undefined {
   const header = req.headers.authorization ?? req.headers.Authorization;
   return Array.isArray(header) ? header[0] : header;
@@ -40,7 +51,8 @@ function groupHotspots(hotspots: FireHotspot[]): HotspotGroup[] {
   for (const hotspot of hotspots) {
     const latitudeCell = Math.floor(hotspot.lat / GRID_SIZE_DEGREES);
     const longitudeCell = Math.floor(hotspot.lon / GRID_SIZE_DEGREES);
-    const key = `${latitudeCell}:${longitudeCell}`;
+    const utcDate = hotspot.timestamp.slice(0, 10);
+    const key = `cell-${latitudeCell}-${longitudeCell}-${utcDate}`;
     const group = groups.get(key);
 
     if (group) {
@@ -110,14 +122,14 @@ async function checkSupabaseAvailability(): Promise<void> {
   }
 }
 
-async function findNewHotspotsWithSupabase(hotspots: FireHotspot[]): Promise<FireHotspot[]> {
+async function findNewGroupsWithSupabase(groups: HotspotGroup[]): Promise<HotspotGroup[]> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error('Supabase environment variables are not configured.');
   }
-  if (hotspots.length === 0) return [];
+  if (groups.length === 0) return [];
 
   const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/rest/v1/notified_hotspots`, {
     method: 'POST',
@@ -127,7 +139,7 @@ async function findNewHotspotsWithSupabase(hotspots: FireHotspot[]): Promise<Fir
       'Content-Type': 'application/json',
       Prefer: 'resolution=ignore-duplicates,return=representation',
     },
-    body: JSON.stringify(hotspots.map(({ id }) => ({ id }))),
+    body: JSON.stringify(groups.map(({ key }) => ({ id: key }))),
     signal: AbortSignal.timeout(15_000),
   });
   if (!response.ok) {
@@ -140,19 +152,19 @@ async function findNewHotspotsWithSupabase(hotspots: FireHotspot[]): Promise<Fir
   }
 
   const insertedIds = new Set(insertedRows.map((row) => row.id));
-  return hotspots.filter((hotspot) => insertedIds.has(hotspot.id));
+  return groups.filter((group) => insertedIds.has(group.key));
 }
 
-async function releaseClaimedHotspots(hotspots: FireHotspot[]): Promise<void> {
+async function releaseClaimedGroups(groups: HotspotGroup[]): Promise<void> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey || hotspots.length === 0) return;
+  if (!supabaseUrl || !serviceRoleKey || groups.length === 0) return;
 
   const endpoint = `${supabaseUrl.replace(/\/$/, '')}/rest/v1/notified_hotspots`;
   const chunkSize = 100;
 
-  for (let offset = 0; offset < hotspots.length; offset += chunkSize) {
-    const ids = hotspots.slice(offset, offset + chunkSize).map(({ id }) => id);
+  for (let offset = 0; offset < groups.length; offset += chunkSize) {
+    const ids = groups.slice(offset, offset + chunkSize).map(({ key }) => key);
     const url = new URL(endpoint);
     url.searchParams.set('id', `in.(${ids.join(',')})`);
 
@@ -255,17 +267,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     const notifyWindowHours = getNotifyWindowHours();
-    const allHotspots = await fetchFirmsHotspots(notifyWindowHours);
+    const minimumFrp = getNotifyMinFrp();
+    const firmsResult = await fetchFirmsHotspots(notifyWindowHours);
+    const allHotspots = firmsResult.hotspots;
     const now = Date.now();
     const eligible = allHotspots.filter(
       (hotspot) =>
         (hotspot.confidence === 'n' || hotspot.confidence === 'h') &&
+        hotspot.frp >= minimumFrp &&
         isRecent(hotspot, now, notifyWindowHours)
     );
 
-    let newHotspots: FireHotspot[];
+    const candidateGroups = groupHotspots(eligible);
+    let newGroups: HotspotGroup[];
     try {
-      newHotspots = await findNewHotspotsWithSupabase(eligible);
+      newGroups = await findNewGroupsWithSupabase(candidateGroups);
     } catch (error) {
       console.error(errorMessage(error));
       res.status(503).json({
@@ -275,17 +291,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return;
     }
 
-    const groups = groupHotspots(newHotspots);
     let notified = 0;
     let notificationsSent = 0;
 
-    for (let index = 0; index < groups.length; index += 1) {
-      const group = groups[index];
+    for (let index = 0; index < newGroups.length; index += 1) {
+      const group = newGroups[index];
       if (!group) continue;
 
       if (notificationsSent >= MAX_NOTIFICATIONS) {
         try {
-          await releaseClaimedHotspots(groups.slice(index).flatMap(({ hotspots: groupHotspots }) => groupHotspots));
+          await releaseClaimedGroups(newGroups.slice(index));
         } catch (error) {
           console.error(errorMessage(error));
           res.status(500).json({ error: 'No fue posible completar el proceso de notificación.' });
@@ -300,9 +315,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         notified += group.hotspots.length;
       } catch (error) {
         try {
-          await releaseClaimedHotspots(
-            groups.slice(index).flatMap(({ hotspots: groupHotspots }) => groupHotspots)
-          );
+          await releaseClaimedGroups(newGroups.slice(index));
         } catch (cleanupError) {
           console.error(errorMessage(cleanupError));
         }

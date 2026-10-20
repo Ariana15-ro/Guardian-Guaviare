@@ -12,7 +12,7 @@ El área de búsqueda de FIRMS usa un rectángulo geográfico aproximado; por el
 - Leaflet + OpenStreetMap (mapa interactivo sin clave de API)
 - Recharts y Chart.js (gráficos)
 - Tailwind CSS
-- NASA FIRMS (VIIRS SNPP NRT) para focos de calor del Guaviare
+- NASA FIRMS (VIIRS SNPP, NOAA-20 y NOAA-21 NRT) para focos de calor de la región
 - Datos sintéticos etiquetados para río, deforestación y modo demo
 
 ## Cómo correrlo
@@ -48,6 +48,7 @@ La clave de FIRMS y el tema de ntfy solo se usan en las funciones serverless; no
 | `CRON_SECRET` | Para notificar | Token Bearer que protege `/api/notificar`. |
 | `DASHBOARD_URL` | Para notificar | URL pública del tablero, usada en el enlace de cada alerta. |
 | `NOTIFY_WINDOW_HOURS` | No | Ventana de antigüedad para notificar focos nominales/altos, en horas (por defecto, `6`). |
+| `NOTIFY_MIN_FRP` | No | FRP mínimo para notificar un foco nominal/alto, en MW (por defecto, `0.4`). |
 | `SUPABASE_URL` | No | URL del proyecto Supabase para deduplicación persistente. |
 | `SUPABASE_SERVICE_ROLE_KEY` | No | Clave secreta de servidor para insertar registros de deduplicación. Nunca usar en el frontend. |
 
@@ -57,7 +58,7 @@ Obtén una `MAP_KEY` gratuita desde la página de [NASA FIRMS API](https://firms
 
 1. En el proyecto Supabase, abre **SQL Editor**, pega el contenido completo de [`supabase/schema.sql`](./supabase/schema.sql) y ejecútalo. El esquema se puede ejecutar varias veces.
 2. En **Project Settings → API**, copia la **Project URL** a `SUPABASE_URL` y la `service_role` key a `SUPABASE_SERVICE_ROLE_KEY`. Añádelas únicamente al entorno del servidor (por ejemplo, `.env.local` para pruebas locales y las variables de entorno del proyecto); nunca las pongas en el frontend ni en variables `VITE_*`.
-3. Llama a `/api/notificar` con su Bearer. En una respuesta exitosa, comprueba que el campo JSON `deduplication` tenga el valor `supabase`. Si Supabase no está configurado o su API falla, se usa deduplicación en memoria y se devuelve `memoria-mejor-esfuerzo`.
+3. Llama a `/api/notificar` con su Bearer. En una respuesta exitosa, comprueba que el campo JSON `deduplication` tenga el valor `supabase`. Si Supabase falta o no está disponible, el endpoint responde `503` y no envía notificaciones.
 
 ### Probar localmente
 
@@ -78,7 +79,9 @@ curl.exe -X POST "http://localhost:3000/api/notificar" `
   -H "Authorization: Bearer TU_CRON_SECRET"
 ```
 
-`/api/notificar` también admite GET con el mismo Bearer. Solo considera focos de confianza nominal/alta adquiridos dentro de `NOTIFY_WINDOW_HOURS` (6 horas por defecto) y limita el envío a cinco notificaciones por ejecución (si hay más focos, agrupa el resto). Las notificaciones indican: “detección satelital, no confirmada”. Con Supabase, los IDs insertados en `notified_hotspots` evitan notificaciones duplicadas; si Supabase no está disponible, la deduplicación usa un `Set` en memoria de mejor esfuerzo y las instancias serverless pueden reiniciarse o no compartir memoria, por lo que pueden repetirse alertas.
+`/api/notificar` también admite GET con el mismo Bearer. Solo considera focos de confianza nominal/alta adquiridos dentro de `NOTIFY_WINDOW_HOURS` (6 horas por defecto) y con FRP igual o superior a `NOTIFY_MIN_FRP` (0.4 MW por defecto). Se consultan en paralelo las fuentes oficiales VIIRS SNPP, NOAA-20 y NOAA-21 NRT con un rango de cinco días; si una fuente falla, las demás siguen disponibles. Los registros de distintas fuentes a menos de `0.005°` en latitud y longitud y con menos de dos horas de diferencia se deduplican, conservando el FRP más alto. El endpoint `/api/fuegos` entrega los focos de las últimas 24 horas y el conteo/última detección de los últimos cinco días.
+
+Las notificaciones se deduplican en Supabase por celda de `0.05°` y fecha UTC; si Supabase no está disponible, la ruta responde `503` sin enviar alertas. Cada ejecución envía como máximo cinco notificaciones; las claves de grupos que no se enviaron o cuya publicación falló se liberan para permitir el reintento. Los mensajes indican “detección satelital, no confirmada”.
 
 ### Programar un cron externo
 

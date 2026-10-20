@@ -1,5 +1,6 @@
 export interface FireHotspot {
   id: string;
+  source: string;
   lat: number;
   lon: number;
   acqDate: string;
@@ -13,13 +14,22 @@ export interface FireHotspot {
 
 export const GUAVIARE_BOUNDS = {
   west: -74.0,
-  south: 1.3,
-  east: -71.5,
-  north: 3.0,
+  south: 0.8,
+  east: -71.0,
+  north: 3.3,
 }; // TODO: Este rectángulo es aproximado; se puede reemplazar por filtrado con el polígono del departamento.
 
-export const FIRMS_DAY_RANGE = 2;
+export const FIRMS_DAY_RANGE = 5;
+const FIRMS_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'] as const;
+const DEDUPLICATION_COORDINATE_DELTA = 0.005;
+const DEDUPLICATION_TIME_WINDOW_MS = 2 * 60 * 60 * 1000;
 const MAX_NOTIFY_WINDOW_HOURS = 48;
+
+export interface FirmsHotspotsResult {
+  hotspots: FireHotspot[];
+  last5DaysCount: number;
+  lastDetection: string | null;
+}
 
 export function getNotifyWindowHours(): number {
   const configuredHours = process.env.NOTIFY_WINDOW_HOURS;
@@ -61,7 +71,7 @@ function isConfidence(value: string): value is FireHotspot['confidence'] {
   return value === 'l' || value === 'n' || value === 'h';
 }
 
-export function parseFirmsCsv(csv: string): FireHotspot[] {
+export function parseFirmsCsv(csv: string, source: string): FireHotspot[] {
   const content = csv.trim();
   if (!content) throw new Error('NASA FIRMS devolvió una respuesta vacía.');
   const rows = content.split(/\r?\n/);
@@ -107,7 +117,8 @@ export function parseFirmsCsv(csv: string): FireHotspot[] {
     const stableLon = lon.toFixed(5);
 
     hotspots.push({
-      id: `viirs-${stableLat}-${stableLon}-${acqDate}-${acqTime}`,
+      id: `${source.toLowerCase()}-${stableLat}-${stableLon}-${acqDate}-${acqTime}`,
+      source,
       lat,
       lon,
       acqDate,
@@ -122,24 +133,96 @@ export function parseFirmsCsv(csv: string): FireHotspot[] {
   return hotspots;
 }
 
-export async function fetchFirmsHotspots(windowHours = 24): Promise<FireHotspot[]> {
+function deduplicateHotspots(hotspots: FireHotspot[]): FireHotspot[] {
+  const strongestFirst = [...hotspots].sort((first, second) => second.frp - first.frp);
+  const unique: FireHotspot[] = [];
+
+  for (const hotspot of strongestFirst) {
+    const duplicate = unique.some((kept) =>
+      kept.source !== hotspot.source &&
+      Math.abs(kept.lat - hotspot.lat) < DEDUPLICATION_COORDINATE_DELTA &&
+      Math.abs(kept.lon - hotspot.lon) < DEDUPLICATION_COORDINATE_DELTA &&
+      Math.abs(Date.parse(kept.timestamp) - Date.parse(hotspot.timestamp)) < DEDUPLICATION_TIME_WINDOW_MS
+    );
+    if (!duplicate) unique.push(hotspot);
+  }
+
+  return unique;
+}
+
+async function fetchFirmsSource(
+  source: typeof FIRMS_SOURCES[number],
+  mapKey: string,
+  dayRange: number
+): Promise<FireHotspot[]> {
+  const { west, south, east, north } = GUAVIARE_BOUNDS;
+  const url =
+    `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}` +
+    `/${source}/${west},${south},${east},${north}/${dayRange}`;
+  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) {
+    throw new Error(`NASA FIRMS ${source} respondió con estado ${response.status}.`);
+  }
+  return parseFirmsCsv(await response.text(), source);
+}
+
+function logSourceFailure(error: unknown, mapKey: string, source: string): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[NASA FIRMS ${source}]`, mapKey ? message.replaceAll(mapKey, '[redacted]') : message);
+}
+
+export async function fetchFirmsHotspots(windowHours = 24): Promise<FirmsHotspotsResult> {
   const mapKey = process.env.FIRMS_MAP_KEY;
   if (!mapKey) throw new Error('FIRMS_MAP_KEY no está configurada.');
 
-  const dayRange = Math.max(FIRMS_DAY_RANGE, Math.ceil(windowHours / 24));
-  const { west, south, east, north } = GUAVIARE_BOUNDS;
-  const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}/VIIRS_SNPP_NRT/${west},${south},${east},${north}/${dayRange}`;
-  const response = await fetch(url, { signal: AbortSignal.timeout(15_000) });
-  if (!response.ok) {
-    throw new Error(`NASA FIRMS respondió con estado ${response.status}.`);
+  const queryDayRange = Math.max(FIRMS_DAY_RANGE, Math.ceil(windowHours / 24));
+  const sourceResults = await Promise.all(FIRMS_SOURCES.map(async (source) => {
+    try {
+      return await fetchFirmsSource(source, mapKey, queryDayRange);
+    } catch (error) {
+      logSourceFailure(error, mapKey, source);
+      return null;
+    }
+  }));
+  const availableSources = sourceResults.filter((result) => result !== null);
+  if (availableSources.length === 0) {
+    throw new Error('NASA FIRMS no pudo responder desde ninguna fuente VIIRS.');
   }
-  const fetchedHotspots = parseFirmsCsv(await response.text());
+
   const now = Date.now();
-  const windowMilliseconds = windowHours * 60 * 60 * 1000;
-  const filteredHotspots = fetchedHotspots.filter((hotspot) => {
+  const fiveDayWindowMilliseconds = FIRMS_DAY_RANGE * 24 * 60 * 60 * 1000;
+  const fetchedHotspots = availableSources.flat();
+  const fiveDayHotspots = deduplicateHotspots(
+    fetchedHotspots.filter((hotspot) => {
+      const age = now - Date.parse(hotspot.timestamp);
+      return age >= 0 && age <= fiveDayWindowMilliseconds;
+    })
+  );
+  const windowMilliseconds = Math.max(0, windowHours) * 60 * 60 * 1000;
+  const filteredHotspots = fiveDayHotspots.filter((hotspot) => {
     const age = now - Date.parse(hotspot.timestamp);
     return age >= 0 && age <= windowMilliseconds;
   });
-  console.log('[NASA FIRMS] Hotspots returned:', fetchedHotspots.length, 'passing time window:', filteredHotspots.length);
-  return filteredHotspots;
+  const lastDetection = fiveDayHotspots.reduce<string | null>((latest, hotspot) =>
+    latest === null || Date.parse(hotspot.timestamp) > Date.parse(latest)
+    ? hotspot.timestamp
+    : latest,
+  null);
+
+  console.log(
+    '[NASA FIRMS] Sources available:',
+    availableSources.length,
+    'hotspots returned:',
+    fetchedHotspots.length,
+    'unique hotspots in 5 days:',
+    fiveDayHotspots.length,
+    'hotspots passing requested window:',
+    filteredHotspots.length
+  );
+
+  return {
+    hotspots: filteredHotspots,
+    last5DaysCount: fiveDayHotspots.length,
+    lastDetection,
+  };
 }

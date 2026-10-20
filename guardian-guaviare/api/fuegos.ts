@@ -9,9 +9,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       return;
     }
 
-    const hotspots = await fetchFirmsHotspots();
+    const result = await fetchFirmsHotspots(24);
     res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=300');
-    res.status(200).json({ source: 'NASA FIRMS (VIIRS)', fetchedAt: new Date().toISOString(), hotspots });
+    res.status(200).json({
+      source: 'NASA FIRMS (VIIRS)',
+      fetchedAt: new Date().toISOString(),
+      hotspots: result.hotspots,
+      last5DaysCount: result.last5DaysCount,
+      lastDetection: result.lastDetection,
+    });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     res.status(500).json({ error: 'No fue posible consultar los focos de calor.' });

@@ -74,6 +74,13 @@ export function EventList({ events, selectedId, onSelect, onAlert, historicalSna
                       </button>
                     </div>
                   </div>
+                  {ev.type === 'incendio' && ev.source === 'real' && (
+                    <p className="mt-1 truncate text-[10px] text-slate-400">
+                      {ev.satellite ? `Satélite ${ev.satellite}` : 'VIIRS'}
+                      {ev.localTime && ` · ${ev.localTime} (Bogotá)`}
+                      {ev.firmsSource && ` · ${ev.firmsSource}`}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

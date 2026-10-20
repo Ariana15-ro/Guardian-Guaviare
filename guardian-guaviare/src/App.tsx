@@ -64,7 +64,7 @@ function toFireEvent(fire: FuegoReal): SensorEvent {
     lat: fire.lat,
     lng: fire.lon,
     title: `Foco de calor · ${municipality}`,
-    description: `Detección satelital, no confirmada. Confianza ${confidenceLabel}. FRP: ${fire.frp} MW. VIIRS del satélite ${fire.satellite}.`,
+    description: `Detección satelital, no confirmada. Confianza ${confidenceLabel}. FRP: ${fire.frp} MW. ${fire.source}, satélite ${fire.satellite}.`,
     timestamp: fire.timestamp,
     value: fire.frp,
     municipality,
@@ -74,7 +74,16 @@ function toFireEvent(fire: FuegoReal): SensorEvent {
     frp: fire.frp,
     localTime: fire.localTime,
     satellite: fire.satellite,
+    firmsSource: fire.source,
   };
+}
+
+function formatBogotaDateTime(timestamp: string): string {
+  return new Intl.DateTimeFormat('es-CO', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'America/Bogota',
+  }).format(new Date(timestamp));
 }
 
 function computeStats(events: SensorEvent[], alerts: AlertLog[], mode: DataMode): DashboardStats {
@@ -181,6 +190,8 @@ export default function App() {
   const [mode, setMode] = useState<DataMode>('real');
   const [fuegos, setFuegos] = useState<FuegoReal[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
+  const [last5DaysCount, setLast5DaysCount] = useState(0);
+  const [lastDetection, setLastDetection] = useState<string | null>(null);
   const [fuegosError, setFuegosError] = useState<string | null>(null);
   const [fuegosLoading, setFuegosLoading] = useState(true);
   const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(false);
@@ -273,6 +284,8 @@ export default function App() {
       const response = await fetchFuegos();
       setFuegos(response.hotspots);
       setFetchedAt(response.fetchedAt);
+      setLast5DaysCount(response.last5DaysCount);
+      setLastDetection(response.lastDetection);
       setFuegosError(null);
       setFuegosLoading(false);
       if (historicalQueryPending.current) {
@@ -543,9 +556,11 @@ export default function App() {
             No se pudo conectar con NASA FIRMS, mostrando datos simulados. {fuegosError}
           </div>
         )}
-        {mode === 'real' && !fuegosLoading && !fuegosError && fuegoCount === 0 && (
+        {mode === 'real' && !showHistoricalSnapshot && !fuegosLoading && !fuegosError && fuegoCount === 0 && (
           <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200">
-            Sin focos detectados en las últimas 24 h.
+            {last5DaysCount === 0
+              ? 'Sin focos detectados en los últimos 5 días'
+              : `Sin focos en las últimas 24 h · Últimos 5 días: ${last5DaysCount} · Último foco: ${lastDetection ? `${formatBogotaDateTime(lastDetection)} (hora Bogotá)` : 'sin registro'}`}
           </p>
         )}
         {/* Stats */}

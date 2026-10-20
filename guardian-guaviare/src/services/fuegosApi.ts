@@ -1,5 +1,6 @@
 export interface FuegoReal {
   id: string;
+  source: string;
   lat: number;
   lon: number;
   acqDate: string;
@@ -15,6 +16,8 @@ export interface FuegosResponse {
   source: string;
   fetchedAt: string;
   hotspots: FuegoReal[];
+  last5DaysCount: number;
+  lastDetection: string | null;
 }
 
 const RETRY_DELAYS_MS = [1_000, 2_000];
@@ -35,7 +38,13 @@ export async function fetchFuegos(): Promise<FuegosResponse> {
       if (!response.ok) {
         throw new Error('error' in payload && payload.error ? payload.error : `La API respondió con estado ${response.status}.`);
       }
-      if (!('hotspots' in payload) || !Array.isArray(payload.hotspots) || !payload.fetchedAt) {
+      if (
+        !('hotspots' in payload) ||
+        !Array.isArray(payload.hotspots) ||
+        !payload.fetchedAt ||
+        !Number.isInteger(payload.last5DaysCount) ||
+        !(payload.lastDetection === null || typeof payload.lastDetection === 'string')
+      ) {
         throw new Error('La respuesta de la API de incendios tiene un formato inválido.');
       }
       return payload;

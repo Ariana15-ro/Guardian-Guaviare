@@ -19,6 +19,7 @@ export interface SensorEvent {
   frp?: number;
   localTime?: string;
   satellite?: string;
+  firmsSource?: string;
   historicalSnapshot?: boolean;
 }
 
