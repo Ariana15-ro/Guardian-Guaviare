@@ -25,10 +25,10 @@ export function StatsCards({ stats, mode, historicalFocos = 0 }: Props) {
     },
     {
       label: historicalFocos > 0
-        ? 'Focos de calor · NASA FIRMS'
+        ? 'Focos reales · NASA FIRMS'
         : mode === 'real'
-          ? 'Focos de calor · FIRMS'
-          : 'Focos de calor · demo',
+          ? 'Focos reales · NASA FIRMS'
+          : 'Focos simulados · demo',
       value: historicalFocos > 0
         ? stats.incendios > 0
           ? `${stats.incendios} + ${historicalFocos} hist.`

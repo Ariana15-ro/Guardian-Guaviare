@@ -188,6 +188,7 @@ async function playNotificationSound(): Promise<void> {
 export default function App() {
   const [events, setEvents] = useState<SensorEvent[]>(() => generateInitialEvents(52));
   const [mode, setMode] = useState<DataMode>('real');
+  const [showSimulation, setShowSimulation] = useState(false);
   const [fuegos, setFuegos] = useState<FuegoReal[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [last5DaysCount, setLast5DaysCount] = useState(0);
@@ -297,6 +298,7 @@ export default function App() {
       setFuegosError(message);
       setFuegosLoading(false);
       setMode('demo');
+      setShowSimulation(true);
     }
   }, []);
 
@@ -376,17 +378,19 @@ export default function App() {
     });
   }, [visibleEvents, typeFilter, severityFilter, statusFilter]);
 
-  const mapEvents = useMemo(
-    () => showHistoricalSnapshot
-      ? [...filtered, ...historicalEvents]
-      : filtered,
-    [filtered, historicalEvents, showHistoricalSnapshot]
+  const simulationEvents = useMemo(
+    () => filtered.filter((event) => event.source !== 'real'),
+    [filtered]
   );
-  const historicalListEvents = showHistoricalSnapshot
-    ? fuegoCount > 0
-      ? [...fuegoEvents, ...historicalEvents]
-      : historicalEvents
-    : filtered;
+  const realListEvents = fuegoEvents;
+  const historicalListEvents = showHistoricalSnapshot ? historicalEvents : [];
+  const mapEvents = useMemo(
+    () => [
+      ...(showSimulation ? simulationEvents : []),
+      ...focoEventsForFrame,
+    ],
+    [focoEventsForFrame, showSimulation, simulationEvents]
+  );
   const stats = useMemo(() => computeStats(visibleEvents, alerts, mode), [visibleEvents, alerts, mode]);
 
   const handleAlert = useCallback((event: SensorEvent) => {
@@ -535,6 +539,7 @@ export default function App() {
               aria-pressed={mode === 'real'}
               onClick={() => {
                 setMode('real');
+                setShowSimulation(false);
                 if (fuegosError) void refreshFuegos();
               }}
               className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${mode === 'real' ? 'border-emerald-400 bg-emerald-500/15 text-emerald-200' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
@@ -544,7 +549,10 @@ export default function App() {
             <button
               type="button"
               aria-pressed={mode === 'demo'}
-              onClick={() => setMode('demo')}
+              onClick={() => {
+                setMode('demo');
+                setShowSimulation(true);
+              }}
               className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${mode === 'demo' ? 'border-amber-400 bg-amber-500/15 text-amber-200' : 'border-slate-700 text-slate-300 hover:bg-slate-800'}`}
             >
               Modo demo
@@ -580,6 +588,8 @@ export default function App() {
                 frameKey={mapFrameKey}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                showSimulation={showSimulation}
+                onToggleSimulation={(shown) => setShowSimulation(shown)}
                 pulseId={fireSimulation?.event.id}
                 resetToken={mapResetToken}
               />
@@ -616,11 +626,19 @@ export default function App() {
           </div>
           <div className="flex h-[360px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900/60 sm:h-[420px]">
             <EventList
-              events={historicalListEvents}
+              realEvents={realListEvents}
+              historicalEvents={historicalListEvents}
+              simulationEvents={simulationEvents}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              onSelect={(id) => {
+                if (simulationEvents.some((event) => event.id === id)) setShowSimulation(true);
+                setSelectedId(id);
+              }}
               onAlert={handleAlert}
-              historicalSnapshot={showHistoricalSnapshot}
+              last5DaysCount={last5DaysCount}
+              lastDetection={lastDetection}
+              loading={fuegosLoading}
+              error={fuegosError}
             />
           </div>
         </div>

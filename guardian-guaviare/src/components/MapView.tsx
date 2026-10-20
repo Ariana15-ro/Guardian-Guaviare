@@ -11,6 +11,8 @@ interface Props {
   frameKey: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  showSimulation: boolean;
+  onToggleSimulation: (shown: boolean) => void;
   pulseId?: string | null;
   resetToken?: number;
 }
@@ -132,6 +134,8 @@ export function MapView({
   frameKey,
   selectedId,
   onSelect,
+  showSimulation,
+  onToggleSimulation,
   pulseId = null,
   resetToken = 0,
 }: Props) {
@@ -140,6 +144,17 @@ export function MapView({
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-xl border border-slate-700/60">
+      <label className="absolute left-3 top-3 z-[1000] flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow">
+        <input
+          type="checkbox"
+          checked={showSimulation}
+          onChange={(event) => onToggleSimulation(event.currentTarget.checked)}
+          onClick={(event) => event.stopPropagation()}
+          className="accent-amber-600"
+          aria-label="Mostrar simulación en el mapa"
+        />
+        Mostrar simulación
+      </label>
       <MapContainer
         center={center}
         zoom={8}
@@ -162,6 +177,7 @@ export function MapView({
         {events.map((ev) => {
           const isSelected = ev.id === selectedId;
           const isPulsing = ev.id === pulseId;
+          const isRealHotspot = ev.type === 'incendio' && ev.source === 'real' && !ev.historicalSnapshot;
           const color = ev.historicalSnapshot ? '#c084fc' : TYPE_COLORS[ev.type];
           const radius = SEVERITY_RADIUS[ev.severity] ?? 10;
 
@@ -169,17 +185,17 @@ export function MapView({
             <CircleMarker
               key={ev.id}
               center={[ev.lat, ev.lng]}
-              radius={isSelected ? radius + 4 : radius}
+              radius={isSelected ? radius + 4 : isRealHotspot ? Math.max(radius, 13) : radius}
               ref={(layer) => {
                 if (layer) markers.current.set(ev.id, layer);
                 else markers.current.delete(ev.id);
               }}
               pathOptions={{
                 className: isPulsing ? 'fire-pulse' : undefined,
-                color: isPulsing ? '#ef4444' : isSelected ? '#fff' : color,
-                fillColor: isPulsing ? '#ef4444' : color,
-                fillOpacity: isSelected ? 0.9 : ev.historicalSnapshot ? 0.95 : ev.source === 'real' ? 0.85 : 0.4,
-                weight: isSelected ? 3 : 1.5,
+                color: isPulsing ? '#ef4444' : isSelected ? '#fff' : isRealHotspot ? '#fef08a' : color,
+                fillColor: isPulsing ? '#ef4444' : isRealHotspot ? '#ef4444' : color,
+                fillOpacity: isSelected ? 0.95 : ev.historicalSnapshot ? 0.95 : isRealHotspot ? 0.95 : 0.4,
+                weight: isRealHotspot || isSelected ? 3 : 1.5,
                 dashArray: ev.historicalSnapshot ? '2 3' : ev.source === 'real' ? undefined : '4 3',
               }}
               eventHandlers={{
