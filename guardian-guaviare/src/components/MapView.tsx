@@ -12,6 +12,7 @@ interface Props {
   frameKey: string;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  historicalMode: boolean;
   showSimulation: boolean;
   onToggleSimulation: (shown: boolean) => void;
   pulseId?: string | null;
@@ -135,6 +136,7 @@ export function MapView({
   frameKey,
   selectedId,
   onSelect,
+  historicalMode,
   showSimulation,
   onToggleSimulation,
   pulseId = null,
@@ -173,17 +175,19 @@ export function MapView({
           No se pudo cargar el contorno departamental.
         </p>
       )}
-      <label className="absolute left-3 top-3 z-[1000] flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow">
-        <input
-          type="checkbox"
-          checked={showSimulation}
-          onChange={(event) => onToggleSimulation(event.currentTarget.checked)}
-          onClick={(event) => event.stopPropagation()}
-          className="accent-amber-600"
-          aria-label="Mostrar simulación en el mapa"
-        />
-        Mostrar simulación
-      </label>
+      {!historicalMode && (
+        <label className="absolute left-3 top-3 z-[1000] flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 bg-white/95 px-2.5 py-1.5 text-xs font-semibold text-slate-800 shadow">
+          <input
+            type="checkbox"
+            checked={showSimulation}
+            onChange={(event) => onToggleSimulation(event.currentTarget.checked)}
+            onClick={(event) => event.stopPropagation()}
+            className="accent-amber-600"
+            aria-label="Mostrar simulación en el mapa"
+          />
+          Mostrar simulación
+        </label>
+      )}
       <MapContainer
         center={center}
         zoom={8}
@@ -249,7 +253,7 @@ export function MapView({
                   <p className="mb-1 text-sm font-medium">{ev.title}</p>
                   <p className="mb-2 text-xs text-slate-400">{ev.description}</p>
                   <p className={`mb-2 text-[10px] font-semibold uppercase tracking-wide ${ev.historicalSnapshot ? 'text-purple-300' : ev.source === 'real' ? 'text-emerald-300' : 'text-amber-300'}`}>
-                    {ev.historicalSnapshot ? 'Captura histórica · NASA FIRMS' : ev.source === 'real' ? 'Dato real · NASA FIRMS' : 'Dato simulado'}
+                    {ev.historicalSnapshot ? 'HISTÓRICO · NASA FIRMS' : ev.source === 'real' ? 'Dato real · NASA FIRMS' : 'Dato simulado'}
                   </p>
                   {ev.type === 'incendio' && ev.source === 'real' && (
                     <p className={`mb-2 text-xs font-semibold ${ev.inGuaviare ? 'text-emerald-300' : 'text-orange-300'}`}>

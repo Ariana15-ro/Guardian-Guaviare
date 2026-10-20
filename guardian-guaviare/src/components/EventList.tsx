@@ -145,6 +145,7 @@ export function EventList({
   loading,
   error,
 }: Props) {
+  const historicalMode = realEvents.some((event) => event.historicalSnapshot);
   const bogotaLastDetection = lastDetection
     ? new Intl.DateTimeFormat('es-CO', {
       dateStyle: 'medium',
@@ -170,7 +171,9 @@ export function EventList({
             <h3 id="real-hotspots-title" className="text-xs font-semibold text-emerald-200">
               Focos de calor reales (NASA FIRMS)
             </h3>
-            <span className="text-[10px] text-slate-400">Últimas 24 h</span>
+            <span className="text-[10px] text-slate-400">
+              {historicalMode ? 'Captura histórica · 16-19/10/2026' : 'Últimas 24 h'}
+            </span>
           </div>
           {realEvents.length === 0 && (
             <p className="px-4 py-3 text-xs leading-relaxed text-slate-400">
@@ -188,6 +191,7 @@ export function EventList({
               key={event.id}
               event={event}
               selected={selectedId === event.id}
+              historical={event.historicalSnapshot}
               onSelect={onSelect}
               onAlert={onAlert}
             />
@@ -211,25 +215,27 @@ export function EventList({
           )}
         </section>
 
-        <details className="border-t border-slate-700/60">
-          <summary className="sticky top-0 z-10 flex cursor-pointer list-none items-center justify-between border-b border-slate-700/60 bg-slate-900 px-4 py-3 text-xs font-semibold text-amber-200">
-            <span>Simulación (datos de demostración)</span>
-            <span className="text-[10px] text-slate-400">{simulationEvents.length} eventos · SIMULADO</span>
-          </summary>
-          {simulationEvents.length === 0 ? (
-            <p className="p-4 text-center text-xs text-slate-500">No hay eventos simulados con los filtros actuales.</p>
-          ) : (
-            simulationEvents.map((event) => (
-              <EventRow
-                key={event.id}
-                event={event}
-                selected={selectedId === event.id}
-                onSelect={onSelect}
-                onAlert={onAlert}
-              />
-            ))
-          )}
-        </details>
+        {!historicalMode && (
+          <details className="border-t border-slate-700/60">
+            <summary className="sticky top-0 z-10 flex cursor-pointer list-none items-center justify-between border-b border-slate-700/60 bg-slate-900 px-4 py-3 text-xs font-semibold text-amber-200">
+              <span>Simulación (datos de demostración)</span>
+              <span className="text-[10px] text-slate-400">{simulationEvents.length} eventos · SIMULADO</span>
+            </summary>
+            {simulationEvents.length === 0 ? (
+              <p className="p-4 text-center text-xs text-slate-500">No hay eventos simulados con los filtros actuales.</p>
+            ) : (
+              simulationEvents.map((event) => (
+                <EventRow
+                  key={event.id}
+                  event={event}
+                  selected={selectedId === event.id}
+                  onSelect={onSelect}
+                  onAlert={onAlert}
+                />
+              ))
+            )}
+          </details>
+        )}
       </div>
     </div>
   );

@@ -5,9 +5,15 @@ interface Props {
   stats: DashboardStats;
   mode: 'real' | 'demo';
   historicalFocos?: number;
+  historicalInfluenceFocos?: number;
 }
 
-export function StatsCards({ stats, mode, historicalFocos = 0 }: Props) {
+export function StatsCards({
+  stats,
+  mode,
+  historicalFocos = 0,
+  historicalInfluenceFocos = 0,
+}: Props) {
   const cards = [
     {
       label: 'Eventos Activos',
@@ -25,14 +31,12 @@ export function StatsCards({ stats, mode, historicalFocos = 0 }: Props) {
     },
     {
       label: historicalFocos > 0
-        ? 'Focos reales · NASA FIRMS'
+        ? 'Captura histórica · NASA FIRMS'
         : mode === 'real'
           ? 'Focos reales · NASA FIRMS'
           : 'Focos simulados · demo',
       value: historicalFocos > 0
-        ? stats.incendios > 0
-          ? `${stats.incendios} + ${historicalFocos} hist.`
-          : `${historicalFocos} focos (histórico)`
+        ? `${stats.incendios} dentro del Guaviare · ${historicalInfluenceFocos} en zona de influencia`
         : stats.incendios,
       icon: Flame,
       color: 'from-red-500/20 to-red-600/5 border-red-500/30',

@@ -1,56 +1,10 @@
 [
- {
-  "lat": 2.34133,
-  "lon": -72.96896,
-  "acqDate": "2026-10-16",
-  "acqTime": "1815",
-  "satellite": "N21",
-  "frp": 21.31,
-  "confidence": "n"
- },
- {
-  "lat": 2.21705,
-  "lon": -72.41778,
-  "acqDate": "2026-10-16",
-  "acqTime": "1853",
-  "satellite": "N",
-  "frp": 11.31,
-  "confidence": "n"
- },
- {
-  "lat": 2.76251,
-  "lon": -72.17906,
-  "acqDate": "2026-10-16",
-  "acqTime": "1853",
-  "satellite": "N",
-  "frp": 5.72,
-  "confidence": "n"
- },
- {
-  "lat": 1.4295,
-  "lon": -72.28097,
-  "acqDate": "2026-10-16",
-  "acqTime": "1815",
-  "satellite": "N21",
-  "frp": 5.81,
-  "confidence": "n"
- },
- {
-  "lat": 1.13816,
-  "lon": -72.00638,
-  "acqDate": "2026-10-16",
-  "acqTime": "1732",
-  "satellite": "N20",
-  "frp": 4.75,
-  "confidence": "n"
- },
- {
-  "lat": 2.6798,
-  "lon": -72.26096,
-  "acqDate": "2026-10-19",
-  "acqTime": "1815",
-  "satellite": "N20",
-  "frp": 3.3,
-  "confidence": "n"
- }
+  { "id": "hist-1", "lat": 2.34133, "lon": -72.96896, "acqDate": "2026-10-16", "acqTime": "1815", "satellite": "N21", "frp": 21.31, "confidence": "n" },
+  { "id": "hist-2", "lat": 2.21705, "lon": -72.41778, "acqDate": "2026-10-16", "acqTime": "1853", "satellite": "Suomi NPP", "frp": 11.31, "confidence": "n" },
+  { "id": "hist-3", "lat": 2.76251, "lon": -72.17906, "acqDate": "2026-10-16", "acqTime": "1853", "satellite": "Suomi NPP", "frp": 5.72, "confidence": "n" },
+  { "id": "hist-4", "lat": 1.4295, "lon": -72.28097, "acqDate": "2026-10-16", "acqTime": "1815", "satellite": "N21", "frp": 5.81, "confidence": "n" },
+  { "id": "hist-5", "lat": 1.13816, "lon": -72.00638, "acqDate": "2026-10-16", "acqTime": "1732", "satellite": "N20", "frp": 4.75, "confidence": "n" },
+  { "id": "hist-6", "lat": 2.6798, "lon": -72.26096, "acqDate": "2026-10-19", "acqTime": "1815", "satellite": "N20", "frp": 3.3, "confidence": "n" },
+  { "id": "hist-7", "lat": 2.93185, "lon": -72.43925, "acqDate": "2026-10-17", "acqTime": "1834", "satellite": "Suomi NPP", "frp": 2.38, "confidence": "n" },
+  { "id": "hist-8", "lat": 3.06863, "lon": -71.46944, "acqDate": "2026-10-19", "acqTime": "1815", "satellite": "N20", "frp": 3.93, "confidence": "n" }
 ]

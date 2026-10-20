@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { lazy, Suspense, useState, useMemo, useCallback, useEffect } from 'react';
 import { SensorEvent, AlertLog, EventType, Severity, DashboardStats, LiveIndicators as LiveIndicatorValues } from './types';
 import { generateInitialEvents, generateEvent, generateFireEvent, generateLiveIndicators, generateRealisticBurst } from './data/generator';
 import { StatsCards } from './components/StatsCards';
@@ -11,6 +11,7 @@ import { AlertModal } from './components/AlertModal';
 import { AlertLogPanel } from './components/AlertLogPanel';
 import { Flame, TreePine, Waves, Activity, RotateCcw, Volume2, Filter } from 'lucide-react';
 import { fetchFuegos, type FuegoReal } from './services/fuegosApi';
+import { isInsideGuaviare } from '../api/_lib/guaviare-boundary.js';
 
 const TrendCharts = lazy(() =>
   import('./components/TrendCharts').then((module) => ({ default: module.TrendCharts }))
@@ -40,6 +41,7 @@ const MUNICIPALITIES = [
 ];
 
 interface HistoricalHotspot {
+  id: `hist-${number}`;
   lat: number;
   lon: number;
   acqDate: string;
@@ -85,6 +87,15 @@ function formatBogotaDateTime(timestamp: string): string {
     timeStyle: 'short',
     timeZone: 'America/Bogota',
   }).format(new Date(timestamp));
+}
+
+function updateHistoricalQuery(enabled: boolean): void {
+  const url = new URL(window.location.href);
+  const retainedDemoValues = url.searchParams.getAll('demo').filter((value) => value !== 'historico');
+  url.searchParams.delete('demo');
+  retainedDemoValues.forEach((value) => url.searchParams.append('demo', value));
+  if (enabled) url.searchParams.append('demo', 'historico');
+  window.history.pushState({}, '', url);
 }
 
 function computeStats(events: SensorEvent[], alerts: AlertLog[], mode: DataMode): DashboardStats {
@@ -193,18 +204,17 @@ export default function App() {
   const [events, setEvents] = useState<SensorEvent[]>(() => generateInitialEvents(52));
   const [mode, setMode] = useState<DataMode>('real');
   const [showSimulation, setShowSimulation] = useState(false);
-  const emptyStateTest = new URLSearchParams(window.location.search).get('demo') === 'vacio';
+  const emptyStateTest = new URLSearchParams(window.location.search).getAll('demo').includes('vacio');
   const [fuegos, setFuegos] = useState<FuegoReal[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
   const [last5DaysCount, setLast5DaysCount] = useState(0);
   const [lastDetection, setLastDetection] = useState<string | null>(null);
   const [fuegosError, setFuegosError] = useState<string | null>(null);
   const [fuegosLoading, setFuegosLoading] = useState(true);
-  const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(false);
-  const [historicalFocos, setHistoricalFocos] = useState<HistoricalHotspot[]>([]);
-  const historicalQueryPending = useRef(
-    new URLSearchParams(window.location.search).get('demo') === 'historico'
+  const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(() =>
+    new URLSearchParams(window.location.search).getAll('demo').includes('historico')
   );
+  const [historicalFocos, setHistoricalFocos] = useState<HistoricalHotspot[]>([]);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [liveState, setLiveState] = useState<LiveDashboardState>(() => {
     const indicators = generateLiveIndicators();
@@ -259,7 +269,7 @@ export default function App() {
           : 'VIIRS_SNPP_NRT';
 
       return {
-        id: `historic-${foco.lat.toFixed(5)}-${foco.lon.toFixed(5)}-${foco.acqDate}-${foco.acqTime}`,
+        id: foco.id,
         type: 'incendio',
         severity: 'baja',
         lat: foco.lat,
@@ -271,7 +281,7 @@ export default function App() {
         municipality,
         status: 'activo',
         source: 'real',
-        inGuaviare: true,
+        inGuaviare: isInsideGuaviare(foco.lat, foco.lon),
         localTime,
         confidence: foco.confidence,
         frp: foco.frp,
@@ -283,20 +293,19 @@ export default function App() {
     [historicalFocos]
   );
   const focoEventsForFrame = useMemo(() => {
-    const realFocos = mode === 'real' ? displayedFuegoEvents : [];
-    return showHistoricalSnapshot
-      ? [...realFocos, ...historicalEvents]
-      : realFocos;
+    if (showHistoricalSnapshot) return historicalEvents;
+    return mode === 'real' ? displayedFuegoEvents : [];
   }, [displayedFuegoEvents, historicalEvents, mode, showHistoricalSnapshot]);
   const mapFrameKey = `${mode}:${focoEventsForFrame.map((event) => event.id).join(',')}`;
   const simulationId = fireSimulation?.event.id;
   const visibleEvents = useMemo(() => {
+    if (showHistoricalSnapshot) return historicalEvents;
     if (mode === 'demo') return events;
     const syntheticEvents = events.filter(
       (event) => event.type !== 'incendio' || event.id === simulationId
     );
     return [...displayedFuegoEvents, ...syntheticEvents];
-  }, [events, displayedFuegoEvents, mode, simulationId]);
+  }, [events, displayedFuegoEvents, historicalEvents, mode, showHistoricalSnapshot, simulationId]);
 
   const refreshFuegos = useCallback(async () => {
     try {
@@ -307,10 +316,6 @@ export default function App() {
       setLastDetection(response.lastDetection);
       setFuegosError(null);
       setFuegosLoading(false);
-      if (historicalQueryPending.current) {
-        historicalQueryPending.current = false;
-        if (!response.hotspots.some((hotspot) => hotspot.inGuaviare)) setShowHistoricalSnapshot(true);
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Error de conexión con NASA FIRMS.';
       setFuegosError(message);
@@ -327,15 +332,20 @@ export default function App() {
         const response = await fetch('/focos-historicos-guaviare.json');
         if (!response.ok) throw new Error(`No se pudo cargar la captura histórica (${response.status}).`);
         const payload = await response.json() as HistoricalHotspot[];
-        if (!Array.isArray(payload) || payload.some((foco) =>
-          !Number.isFinite(foco.lat) ||
-          !Number.isFinite(foco.lon) ||
-          typeof foco.acqDate !== 'string' ||
-          typeof foco.acqTime !== 'string' ||
-          typeof foco.satellite !== 'string' ||
-          !Number.isFinite(foco.frp) ||
-          !['l', 'n', 'h'].includes(foco.confidence)
-        )) {
+        if (
+          !Array.isArray(payload) ||
+          payload.length !== 8 ||
+          payload.some((foco, index) =>
+            foco.id !== `hist-${index + 1}` ||
+            !Number.isFinite(foco.lat) ||
+            !Number.isFinite(foco.lon) ||
+            typeof foco.acqDate !== 'string' ||
+            !/^\d{4}$/.test(foco.acqTime) ||
+            typeof foco.satellite !== 'string' ||
+            !Number.isFinite(foco.frp) ||
+            foco.confidence !== 'n'
+          )
+        ) {
           throw new Error('El archivo de focos históricos tiene un formato inválido.');
         }
         if (!cancelled) setHistoricalFocos(payload);
@@ -349,6 +359,20 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const syncHistoricalMode = () => {
+      const enabled = new URLSearchParams(window.location.search).getAll('demo').includes('historico');
+      setShowHistoricalSnapshot(enabled);
+      if (enabled) {
+        setMode('real');
+        setShowSimulation(false);
+        setSelectedId(null);
+      }
+    };
+    window.addEventListener('popstate', syncHistoricalMode);
+    return () => window.removeEventListener('popstate', syncHistoricalMode);
   }, []);
 
   useEffect(() => {
@@ -419,20 +443,23 @@ export default function App() {
   }, [focoQuery, fuegoEvents]);
 
   const filtered = useMemo(() => {
+    if (showHistoricalSnapshot) return historicalEvents;
     return visibleEvents.filter((e) => {
       if (typeFilter !== 'all' && e.type !== typeFilter) return false;
       if (severityFilter !== 'all' && e.severity !== severityFilter) return false;
       if (statusFilter !== 'all' && e.status !== statusFilter) return false;
       return true;
     });
-  }, [visibleEvents, typeFilter, severityFilter, statusFilter]);
+  }, [historicalEvents, showHistoricalSnapshot, visibleEvents, typeFilter, severityFilter, statusFilter]);
 
   const simulationEvents = useMemo(
     () => filtered.filter((event) => event.source !== 'real'),
     [filtered]
   );
-  const realListEvents = displayedFuegoEvents;
-  const historicalListEvents = showHistoricalSnapshot ? historicalEvents : [];
+  const realListEvents = showHistoricalSnapshot ? historicalEvents : displayedFuegoEvents;
+  const historicalListEvents: SensorEvent[] = [];
+  const historicalInsideCount = historicalEvents.filter((event) => event.inGuaviare).length;
+  const historicalInfluenceCount = historicalEvents.length - historicalInsideCount;
   const mapEvents = useMemo(
     () => [
       ...(showSimulation ? simulationEvents : []),
@@ -440,7 +467,10 @@ export default function App() {
     ],
     [focoEventsForFrame, showSimulation, simulationEvents]
   );
-  const stats = useMemo(() => computeStats(visibleEvents, alerts, mode), [visibleEvents, alerts, mode]);
+  const stats = useMemo(
+    () => computeStats(showHistoricalSnapshot ? historicalEvents : visibleEvents, alerts, showHistoricalSnapshot ? 'real' : mode),
+    [alerts, historicalEvents, mode, showHistoricalSnapshot, visibleEvents]
+  );
 
   const handleAlert = useCallback((event: SensorEvent) => {
     setAlertEvent(event);
@@ -522,11 +552,22 @@ export default function App() {
   };
 
   const activateHistoricalSnapshot = () => {
-    historicalQueryPending.current = false;
     setTypeFilter('all');
     setSeverityFilter('all');
     setStatusFilter('all');
+    setMode('real');
+    setShowSimulation(false);
+    setSelectedId(null);
     setShowHistoricalSnapshot(true);
+    updateHistoricalQuery(true);
+  };
+
+  const returnToLiveData = () => {
+    setShowHistoricalSnapshot(false);
+    setMode('real');
+    setShowSimulation(false);
+    setSelectedId(null);
+    updateHistoricalQuery(false);
   };
 
   return (
@@ -550,7 +591,7 @@ export default function App() {
           <div className="hidden items-center justify-between gap-2 sm:flex sm:justify-end">
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full">
               <Activity className="w-3 h-3 animate-pulse" />
-              En vivo
+              {showHistoricalSnapshot ? 'Captura histórica' : 'En vivo'}
             </div>
             <SimulationControls
               onFire={simulateFire}
@@ -568,20 +609,18 @@ export default function App() {
             <h2 className="text-sm font-semibold text-slate-100">Focos de calor</h2>
             <p className="mt-1 text-xs text-slate-400">
               {showHistoricalSnapshot
-                ? fuegoCount > 0
-                  ? `${fuegoCount} focos reales + ${historicalEvents.length} históricos`
-                  : `${historicalEvents.length} focos (histórico)`
+                ? `${historicalInsideCount} dentro del Guaviare · ${historicalInfluenceCount} en zona de influencia`
                 : mode === 'real'
                   ? 'NASA FIRMS · VIIRS (SNPP, NOAA-20, NOAA-21)'
                   : 'Modo demo · focos de calor sintéticos'}
-              {mode === 'real' && displayedInfluenceFuegoEvents.length > 0 && (
+              {!showHistoricalSnapshot && mode === 'real' && displayedInfluenceFuegoEvents.length > 0 && (
                 <> · <span className="text-[11px] text-slate-500">{displayedInfluenceFuegoEvents.length} en zona de influencia</span></>
               )}
-              {mode === 'real' && fetchedAt && (
+              {!showHistoricalSnapshot && mode === 'real' && fetchedAt && (
                 <> · Última actualización: hace {Math.max(0, Math.floor((Date.now() - Date.parse(fetchedAt)) / 60_000))} min</>
               )}
             </p>
-            {mode === 'real' && (
+            {!showHistoricalSnapshot && mode === 'real' && (
               <p className="mt-1 text-xs text-amber-300">Detección satelital, no confirmada.</p>
             )}
             {emptyStateTest && (
@@ -628,11 +667,17 @@ export default function App() {
               : `Sin focos en las últimas 24 h · Últimos 5 días: ${last5DaysCount} · Último foco: ${lastDetection ? `${formatBogotaDateTime(lastDetection)} (hora Bogotá)` : 'sin registro'}`}
           </p>
         )}
+        {showHistoricalSnapshot && (
+          <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
+            Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
+          </p>
+        )}
         {/* Stats */}
         <StatsCards
           stats={stats}
-          mode={mode}
-          historicalFocos={showHistoricalSnapshot ? historicalEvents.length : 0}
+          mode={showHistoricalSnapshot ? 'real' : mode}
+          historicalFocos={showHistoricalSnapshot ? historicalInsideCount : 0}
+          historicalInfluenceFocos={historicalInfluenceCount}
         />
 
         {/* Map + Event list */}
@@ -645,41 +690,26 @@ export default function App() {
                 frameKey={mapFrameKey}
                 selectedId={selectedId}
                 onSelect={setSelectedId}
+                historicalMode={showHistoricalSnapshot}
                 showSimulation={showSimulation}
                 onToggleSimulation={(shown) => setShowSimulation(shown)}
                 pulseId={fireSimulation?.event.id}
                 resetToken={mapResetToken}
               />
             </div>
-            {mode === 'real' && !fuegosLoading && !fuegosError && (
-              <div className="mt-2 flex flex-col gap-2">
-                {showHistoricalSnapshot && (
-                  <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
-                    Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
-                  </p>
-                )}
-                {showHistoricalSnapshot ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowHistoricalSnapshot(false);
-                      setSelectedId(null);
-                    }}
-                    className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-slate-700"
-                  >
-                    Volver a datos en vivo
-                  </button>
-                ) : fuegoCount === 0 ? (
-                  <button
-                    type="button"
-                    onClick={activateHistoricalSnapshot}
-                    className="w-full rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/25"
-                  >
-                    Ver ejemplo con focos históricos
-                  </button>
-                ) : null}
-              </div>
-            )}
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={showHistoricalSnapshot ? returnToLiveData : activateHistoricalSnapshot}
+                className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                  showHistoricalSnapshot
+                    ? 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
+                    : 'border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
+                }`}
+              >
+                {showHistoricalSnapshot ? 'Volver a datos en vivo' : 'Ver captura histórica'}
+              </button>
+            </div>
           </div>
           <div className="flex h-[360px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900/60 sm:h-[420px]">
             <EventList
@@ -693,7 +723,9 @@ export default function App() {
               }}
               onAlert={handleAlert}
               last5DaysCount={last5DaysCount}
-              influenceCount={displayedInfluenceFuegoEvents.length}
+              influenceCount={showHistoricalSnapshot
+                ? historicalInfluenceCount
+                : displayedInfluenceFuegoEvents.length}
               lastDetection={lastDetection}
               loading={fuegosLoading}
               error={fuegosError}
@@ -736,11 +768,13 @@ export default function App() {
           />
         </div>
 
-        <LiveIndicators values={liveIndicators} mode={mode} />
-        <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-slate-800/50" />}>
-          <TrendCharts readings={trendReadings} mode={mode} />
-        </Suspense>
-        {fireSimulation && (
+        {!showHistoricalSnapshot && <LiveIndicators values={liveIndicators} mode={mode} />}
+        {!showHistoricalSnapshot && (
+          <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-slate-800/50" />}>
+            <TrendCharts readings={trendReadings} mode={mode} />
+          </Suspense>
+        )}
+        {fireSimulation && !showHistoricalSnapshot && (
           <section
             role="alert"
             className="flex flex-col gap-3 rounded-xl border border-red-500/50 bg-red-950/60 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -786,7 +820,7 @@ export default function App() {
           <div>
             <div className="space-y-4">
               <AlertHistory events={visibleEvents} onSelect={handleHistorySelect} />
-              <AlertLogPanel logs={alerts} />
+              {!showHistoricalSnapshot && <AlertLogPanel logs={alerts} />}
             </div>
           </div>
         </div>
