@@ -716,9 +716,18 @@ export default function App() {
           </div>
         )}
         {showHistoricalSnapshot && (
-          <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
-            Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
-          </p>
+          <div className="flex flex-col items-center justify-between gap-2 rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center sm:flex-row sm:text-left">
+            <p className="text-xs font-bold text-amber-100 sm:text-sm">
+              Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
+            </p>
+            <button
+              type="button"
+              onClick={returnToLiveData}
+              className="shrink-0 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:bg-slate-700"
+            >
+              Volver a datos en vivo
+            </button>
+          </div>
         )}
         {/* Stats */}
         <StatsCards
@@ -746,19 +755,6 @@ export default function App() {
                 resetToken={mapResetToken}
               />
             </div>
-            <div className="mt-2">
-              <button
-                type="button"
-                onClick={showHistoricalSnapshot ? returnToLiveData : activateHistoricalSnapshot}
-                className={`w-full rounded-lg border px-3 py-2 text-sm font-semibold transition ${
-                  showHistoricalSnapshot
-                    ? 'border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
-                    : 'border-amber-400/50 bg-amber-500/15 text-amber-100 hover:bg-amber-500/25'
-                }`}
-              >
-                {showHistoricalSnapshot ? 'Volver a datos en vivo' : 'Ver captura histórica'}
-              </button>
-            </div>
           </div>
           <div className="flex h-[360px] min-w-0 flex-col overflow-hidden rounded-xl border border-slate-700/60 bg-slate-900/60 sm:h-[420px]">
             <EventList
@@ -783,44 +779,6 @@ export default function App() {
           </div>
         </div>
 
-        <section className="rounded-xl border border-slate-700/60 bg-slate-900/50 p-2 sm:hidden">
-          <button
-            type="button"
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((open) => !open)}
-            className="flex w-full items-center gap-2 px-2 py-1 text-left text-sm font-medium text-slate-200"
-          >
-            <Filter className="h-4 w-4 text-slate-400" />
-            Filtros
-            <span className="ml-auto text-xs text-slate-400">{filtersOpen ? 'Ocultar' : 'Mostrar'}</span>
-          </button>
-          {filtersOpen && (
-            <div className="pt-2">
-              <Filters
-                typeFilter={typeFilter}
-                severityFilter={severityFilter}
-                statusFilter={statusFilter}
-                onTypeChange={setTypeFilter}
-                onSeverityChange={setSeverityFilter}
-                onStatusChange={setStatusFilter}
-              />
-            </div>
-          )}
-        </section>
-        <div className="hidden flex-wrap items-center gap-2 sm:flex">
-          <Filters
-            typeFilter={typeFilter}
-            severityFilter={severityFilter}
-            statusFilter={statusFilter}
-            onTypeChange={setTypeFilter}
-            onSeverityChange={setSeverityFilter}
-            onStatusChange={setStatusFilter}
-          />
-        </div>
-
-        {!showHistoricalSnapshot && (
-          <LiveIndicators values={liveIndicators} mode={mode} showSimulation={showSimulation} />
-        )}
         {!showHistoricalSnapshot && (
           <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-slate-800/50" />}>
             <TrendCharts
@@ -833,7 +791,48 @@ export default function App() {
             />
           </Suspense>
         )}
-        {fireSimulation && !showHistoricalSnapshot && (
+        {showSimulation && !showHistoricalSnapshot && (
+          <>
+            <section className="rounded-xl border border-slate-700/60 bg-slate-900/50 p-2 sm:hidden">
+              <button
+                type="button"
+                aria-expanded={filtersOpen}
+                onClick={() => setFiltersOpen((open) => !open)}
+                className="flex w-full items-center gap-2 px-2 py-1 text-left text-sm font-medium text-slate-200"
+              >
+                <Filter className="h-4 w-4 text-slate-400" />
+                Filtros
+                <span className="ml-auto text-xs text-slate-400">{filtersOpen ? 'Ocultar' : 'Mostrar'}</span>
+              </button>
+              {filtersOpen && (
+                <div className="pt-2">
+                  <Filters
+                    typeFilter={typeFilter}
+                    severityFilter={severityFilter}
+                    statusFilter={statusFilter}
+                    onTypeChange={setTypeFilter}
+                    onSeverityChange={setSeverityFilter}
+                    onStatusChange={setStatusFilter}
+                  />
+                </div>
+              )}
+            </section>
+            <div className="hidden flex-wrap items-center gap-2 sm:flex">
+              <Filters
+                typeFilter={typeFilter}
+                severityFilter={severityFilter}
+                statusFilter={statusFilter}
+                onTypeChange={setTypeFilter}
+                onSeverityChange={setSeverityFilter}
+                onStatusChange={setStatusFilter}
+              />
+            </div>
+            {!showHistoricalSnapshot && (
+              <LiveIndicators values={liveIndicators} mode={mode} showSimulation={showSimulation} />
+            )}
+          </>
+        )}
+        {fireSimulation && showSimulation && !showHistoricalSnapshot && (
           <section
             role="alert"
             className="flex flex-col gap-3 rounded-xl border border-red-500/50 bg-red-950/60 p-4 sm:flex-row sm:items-center sm:justify-between"
@@ -870,19 +869,21 @@ export default function App() {
         )}
 
         {/* Charts + Alert log */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="min-w-0 lg:col-span-2">
-            <Suspense fallback={<div className="h-48 animate-pulse rounded-xl bg-slate-800/50" />}>
-              <Charts events={dashboardEvents} mode={mode} dailyCounts={dailyCounts} />
-            </Suspense>
-          </div>
-          <div>
-            <div className="space-y-4">
-              <AlertHistory events={dashboardEvents} onSelect={handleHistorySelect} />
-              {!showHistoricalSnapshot && <AlertLogPanel logs={alerts} />}
+        {showSimulation && !showHistoricalSnapshot && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="min-w-0 lg:col-span-2">
+              <Suspense fallback={<div className="h-48 animate-pulse rounded-xl bg-slate-800/50" />}>
+                <Charts events={dashboardEvents} mode={mode} dailyCounts={dailyCounts} />
+              </Suspense>
+            </div>
+            <div>
+              <div className="space-y-4">
+                <AlertHistory events={dashboardEvents} onSelect={handleHistorySelect} />
+                <AlertLogPanel logs={alerts} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </main>
 
       <nav

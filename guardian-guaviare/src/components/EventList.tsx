@@ -174,18 +174,18 @@ export function EventList({
               Focos de calor reales (NASA FIRMS)
             </h3>
             <span className="text-[10px] text-slate-400">
-              {historicalMode ? 'Captura histÃ³rica Â· 16-19/10/2026' : 'Ãšltimas 24 h'}
+              {historicalMode ? 'Captura histórica · 16-19/10/2026' : 'Últimas 24 h'}
             </span>
           </div>
           {realEvents.length === 0 && (
             <p className="px-4 py-3 text-xs leading-relaxed text-slate-400">
               {loading
-                ? 'Consultando focos reales de NASA FIRMSâ€¦'
+                ? 'Consultando focos reales de NASA FIRMS…'
                 : error
                   ? 'No fue posible consultar el resumen de NASA FIRMS.'
                   : last5DaysCount === 0
-                    ? 'Sin focos detectados en los Ãºltimos 5 dÃ­as'
-                    : `Sin focos en las Ãºltimas 24 h Â· Ãšltimos 5 dÃ­as: ${last5DaysCount} Â· Ãšltimo foco: ${bogotaLastDetection ?? 'sin registro'} (hora BogotÃ¡)`}
+                    ? 'Sin focos detectados en los últimos 5 días'
+                    : `Sin focos en las últimas 24 h · Últimos 5 días: ${last5DaysCount} · Último foco: ${bogotaLastDetection ?? 'sin registro'} (hora Bogotá)`}
             </p>
           )}
           {realEvents.map((event) => (
@@ -201,7 +201,7 @@ export function EventList({
           {historicalEvents.length > 0 && (
             <>
               <p className="border-b border-purple-500/20 bg-purple-500/5 px-4 py-2 text-[10px] font-semibold text-purple-200">
-                Captura histÃ³rica NASA FIRMS Â· 16-19/10/2026 Â· no es tiempo real
+                Captura histórica NASA FIRMS · 16-19/10/2026 · no es tiempo real
               </p>
               {historicalEvents.map((event) => (
                 <EventRow

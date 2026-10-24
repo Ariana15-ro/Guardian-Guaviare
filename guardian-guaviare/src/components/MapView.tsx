@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, CircleMarker, GeoJSON as LeafletGeoJSON, Popup, useMap } from 'react-leaflet';
+import { geoJSON } from 'leaflet';
 import type { CircleMarker as LeafletCircleMarker } from 'leaflet';
 import type { GeoJsonObject } from 'geojson';
 import { SensorEvent, EventType } from '../types';
@@ -36,12 +37,16 @@ function MapBehavior({
   markers,
   focusEvents,
   frameKey,
+  historicalMode,
+  boundary,
   selectedId,
   resetToken,
 }: {
   markers: React.RefObject<Map<string, LeafletCircleMarker | null>>;
   focusEvents: SensorEvent[];
   frameKey: string;
+  historicalMode: boolean;
+  boundary: GeoJsonObject | null;
   selectedId: string | null;
   resetToken: number;
 }) {
@@ -49,6 +54,7 @@ function MapBehavior({
   const focusEventsRef = useRef(focusEvents);
   const frameEnabledRef = useRef(true);
   const programmaticMoveRef = useRef(false);
+  const previousFrameKeyRef = useRef<string | null>(null);
 
   focusEventsRef.current = focusEvents;
 
@@ -74,27 +80,37 @@ function MapBehavior({
   const frameHotspots = (force = false) => {
     if (!force && !frameEnabledRef.current) return;
 
-    const points: [number, number][] = focusEventsRef.current.map(({ lat, lng }) => [lat, lng]);
-    if (points.length === 0) {
-      if (force) {
-        programmaticMoveRef.current = true;
-        map.flyTo([2.3, -72.6], 8, { duration: 0.8 });
+    programmaticMoveRef.current = true;
+    if (historicalMode) {
+      const points: [number, number][] = focusEventsRef.current.map(({ lat, lng }) => [lat, lng]);
+      if (points.length === 1) {
+        map.flyTo(points[0], 10, { duration: 0.8 });
+      } else if (points.length > 1) {
+        map.fitBounds(points, { padding: [36, 36], maxZoom: 10, animate: true, duration: 0.8 });
+      } else {
+        map.flyTo([2.3, -72.6], 7, { duration: 0.8 });
       }
       return;
     }
 
-    programmaticMoveRef.current = true;
-    if (points.length === 1) {
-      map.flyTo(points[0], 10, { duration: 0.8 });
-      return;
+    if (boundary) {
+      const bounds = geoJSON(boundary).getBounds();
+      if (bounds.isValid()) {
+        map.fitBounds(bounds, { padding: [32, 32], maxZoom: 8, animate: true, duration: 0.8 });
+        return;
+      }
     }
-    map.fitBounds(points, { padding: [36, 36], maxZoom: 10, animate: true, duration: 0.8 });
+
+    map.flyTo([2.3, -72.6], 7, { duration: 0.8 });
   };
 
   useEffect(() => {
+    const frameIdentity = `${historicalMode ? 'historical' : 'live'}:${frameKey}:${boundary ? 'boundary-ready' : 'boundary-loading'}`;
+    if (previousFrameKeyRef.current === frameIdentity) return;
+    previousFrameKeyRef.current = frameIdentity;
     frameEnabledRef.current = true;
     frameHotspots();
-  }, [frameKey, map]);
+  }, [frameKey, historicalMode, boundary, map]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -109,8 +125,8 @@ function MapBehavior({
 
   useEffect(() => {
     if (resetToken > 0) {
-      programmaticMoveRef.current = true;
-      map.flyTo([2.3, -72.6], 8, { duration: 0.8 });
+      frameEnabledRef.current = true;
+      frameHotspots(true);
     }
   }, [resetToken, map]);
 
@@ -146,6 +162,7 @@ export function MapView({
   const markers = useRef(new Map<string, LeafletCircleMarker | null>());
   const [boundary, setBoundary] = useState<GeoJsonObject | null>(null);
   const [boundaryError, setBoundaryError] = useState(false);
+  const mapFrameKey = `${historicalMode ? 'historical' : 'live'}:${frameKey}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -190,7 +207,7 @@ export function MapView({
       )}
       <MapContainer
         center={center}
-        zoom={8}
+        zoom={7}
         className="h-full w-full"
         zoomControl={true}
       >
@@ -210,7 +227,9 @@ export function MapView({
         <MapBehavior
           markers={markers}
           focusEvents={focusEvents}
-          frameKey={frameKey}
+          frameKey={mapFrameKey}
+          historicalMode={historicalMode}
+          boundary={boundary}
           selectedId={selectedId}
           resetToken={resetToken}
         />
