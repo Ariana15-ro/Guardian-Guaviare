@@ -18,6 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       last5DaysCount: result.last5DaysCount,
       last5DaysCountAll: result.last5DaysCountAll,
       lastDetection: result.lastDetection,
+      dailyCounts: result.dailyCounts,
     });
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

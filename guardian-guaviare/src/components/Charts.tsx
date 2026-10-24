@@ -20,6 +20,7 @@ import { es } from 'date-fns/locale';
 interface Props {
   events: SensorEvent[];
   mode: 'real' | 'demo';
+  dailyCounts?: Array<{ date: string; inside: number; outside: number }>;
 }
 
 const COLORS = {
@@ -28,7 +29,7 @@ const COLORS = {
   nivel_rio: '#3b82f6',
 };
 
-export function Charts({ events, mode }: Props) {
+export function Charts({ events, mode, dailyCounts = [] }: Props) {
   const trendData = useMemo(() => {
     const days = Array.from({ length: 7 }, (_, i) => {
       const d = subDays(new Date(), 6 - i);
@@ -50,13 +51,27 @@ export function Charts({ events, mode }: Props) {
         end.setHours(23, 59, 59, 999);
         return isAfter(evDate, start) && !isAfter(evDate, end);
       });
-      if (day) {
+      if (day && ev.source !== 'real') {
         day[ev.type]++;
       }
     });
 
+    dailyCounts.forEach((dc) => {
+      const dcDate = new Date(dc.date + 'T00:00:00Z');
+      const day = days.find((d) => {
+        const start = new Date(d.full);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(d.full);
+        end.setHours(23, 59, 59, 999);
+        return isAfter(dcDate, start) && !isAfter(dcDate, end);
+      });
+      if (day) {
+        day.incendio += dc.inside;
+      }
+    });
+
     return days;
-  }, [events]);
+  }, [events, dailyCounts]);
 
   const pieData = useMemo(() => {
     const counts = { deforestacion: 0, incendio: 0, nivel_rio: 0 };
@@ -96,9 +111,9 @@ export function Charts({ events, mode }: Props) {
               contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: '#e2e8f0' }}
             />
-            <Area type="monotone" dataKey="incendio" stackId="1" stroke={COLORS.incendio} fill={COLORS.incendio} fillOpacity={0.4} name="Focos de calor" />
-            <Area type="monotone" dataKey="deforestacion" stackId="1" stroke={COLORS.deforestacion} fill={COLORS.deforestacion} fillOpacity={0.4} name="Deforestación" />
-            <Area type="monotone" dataKey="nivel_rio" stackId="1" stroke={COLORS.nivel_rio} fill={COLORS.nivel_rio} fillOpacity={0.4} name="Nivel Río" />
+            <Area type="monotone" dataKey="incendio" stackId="1" stroke={COLORS.incendio} fill={COLORS.incendio} fillOpacity={0.4} name="Focos reales" />
+            <Area type="monotone" dataKey="deforestacion" stackId="1" stroke={COLORS.deforestacion} fill={COLORS.deforestacion} fillOpacity={0.4} name="Deforestación (simulado)" />
+            <Area type="monotone" dataKey="nivel_rio" stackId="1" stroke={COLORS.nivel_rio} fill={COLORS.nivel_rio} fillOpacity={0.4} name="Nivel Río (simulado)" />
           </AreaChart>
         </ResponsiveContainer>
       </div>

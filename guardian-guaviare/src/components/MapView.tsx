@@ -185,7 +185,7 @@ export function MapView({
             className="accent-amber-600"
             aria-label="Mostrar simulación en el mapa"
           />
-          Mostrar simulación
+          {showSimulation ? 'Ocultar simulación' : 'Mostrar simulación'}
         </label>
       )}
       <MapContainer

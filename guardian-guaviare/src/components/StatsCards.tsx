@@ -4,6 +4,7 @@ import { DashboardStats } from '../types';
 interface Props {
   stats: DashboardStats;
   mode: 'real' | 'demo';
+  showSimulation: boolean;
   historicalFocos?: number;
   historicalInfluenceFocos?: number;
 }
@@ -11,12 +12,13 @@ interface Props {
 export function StatsCards({
   stats,
   mode,
+  showSimulation,
   historicalFocos = 0,
   historicalInfluenceFocos = 0,
 }: Props) {
   const cards = [
     {
-      label: 'Eventos Activos',
+      label: 'Eventos simulados activos',
       value: stats.totalActivos,
       icon: AlertTriangle,
       color: 'from-amber-500/20 to-amber-600/5 border-amber-500/30',
@@ -67,7 +69,10 @@ export function StatsCards({
 
   return (
     <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 sm:gap-3">
-      {cards.map((card) => (
+      {cards
+        .filter((card) => showSimulation || !card.label.toLowerCase().includes('simulad'))
+        .filter((card) => showSimulation || mode === 'real' || card.label !== 'Focos simulados · demo')
+        .map((card) => (
         <div
           key={card.label}
           className={`bg-gradient-to-br ${card.color} border rounded-xl p-3 sm:p-4 backdrop-blur-sm`}
@@ -80,7 +85,7 @@ export function StatsCards({
           </div>
           <div className="text-xs text-slate-400 mt-1">{card.label}</div>
         </div>
-      ))}
+        ))}
     </div>
   );
 }

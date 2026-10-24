@@ -1,3 +1,9 @@
+export interface DailyCount {
+  date: string;
+  inside: number;
+  outside: number;
+}
+
 export interface FuegoReal {
   id: string;
   source: string;
@@ -20,6 +26,7 @@ export interface FuegosResponse {
   last5DaysCount: number;
   last5DaysCountAll: number;
   lastDetection: string | null;
+  dailyCounts?: DailyCount[];
 }
 
 const RETRY_DELAYS_MS = [1_000, 2_000];
@@ -58,4 +65,18 @@ export async function fetchFuegos(): Promise<FuegosResponse> {
     }
   }
   throw lastError;
+}
+
+export async function checkFirmsHealth(): Promise<boolean> {
+  const response = await fetch('/api/salud', {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(10_000),
+  });
+  const payload = await response.json() as {
+    checks?: { firms?: unknown };
+  };
+  if (typeof payload.checks?.firms !== 'boolean') {
+    throw new Error('La respuesta del estado NASA FIRMS tiene un formato inválido.');
+  }
+  return payload.checks.firms;
 }

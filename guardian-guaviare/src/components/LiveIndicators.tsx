@@ -4,6 +4,7 @@ import { LiveIndicators as LiveIndicatorValues } from '../types';
 interface Props {
   values: LiveIndicatorValues;
   mode: 'real' | 'demo';
+  showSimulation: boolean;
 }
 
 type IndicatorStatus = 'normal' | 'alerta' | 'critico';
@@ -20,7 +21,7 @@ const STATUS_STYLES: Record<IndicatorStatus, string> = {
   critico: 'border-red-500/50 bg-red-500/10 text-red-300',
 };
 
-export function LiveIndicators({ values, mode }: Props) {
+export function LiveIndicators({ values, mode, showSimulation }: Props) {
   const cards = [
     {
       label: 'Nivel del río',
@@ -56,9 +57,13 @@ export function LiveIndicators({ values, mode }: Props) {
     description: string;
   }[];
 
+  const visibleCards = cards.filter(
+    (card) => showSimulation || (mode === 'real' && card.label === 'Focos de calor')
+  );
+
   return (
     <section aria-label="Indicadores ambientales en vivo" className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      {cards.map(({ label, value, status, icon: Icon, description }) => (
+      {visibleCards.map(({ label, value, status, icon: Icon, description }) => (
         <article
           key={label}
           className={`rounded-xl border p-3 transition-colors duration-500 sm:p-4 ${label === 'Nivel del río' ? 'col-span-2 sm:col-span-1' : ''} ${STATUS_STYLES[status]}`}

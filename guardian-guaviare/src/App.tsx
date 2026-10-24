@@ -10,7 +10,7 @@ import { Filters } from './components/Filters';
 import { AlertModal } from './components/AlertModal';
 import { AlertLogPanel } from './components/AlertLogPanel';
 import { Flame, TreePine, Waves, Activity, RotateCcw, Volume2, Filter } from 'lucide-react';
-import { fetchFuegos, type FuegoReal } from './services/fuegosApi';
+import { checkFirmsHealth, fetchFuegos, type FuegoReal } from './services/fuegosApi';
 import { isInsideGuaviare } from '../api/_lib/guaviare-boundary.js';
 
 const TrendCharts = lazy(() =>
@@ -51,22 +51,33 @@ interface HistoricalHotspot {
   confidence: 'l' | 'n' | 'h';
 }
 
+function computeSeverityByFrp(frp: number, confidence: 'l' | 'n' | 'h'): { severity: Severity; confidenceLabel: 'nominal' | 'alta' } {
+  const confidenceLabel = confidence === 'h' ? 'alta' : 'nominal';
+  if (frp > 30) {
+    return { severity: 'critica', confidenceLabel };
+  }
+  if (frp >= 10) {
+    return { severity: 'media', confidenceLabel };
+  }
+  return { severity: 'baja', confidenceLabel };
+}
+
 function toFireEvent(fire: FuegoReal): SensorEvent {
   const municipality = MUNICIPALITIES.reduce((nearest, current) => {
     const currentDistance = (current.lat - fire.lat) ** 2 + (current.lon - fire.lon) ** 2;
     const nearestDistance = (nearest.lat - fire.lat) ** 2 + (nearest.lon - fire.lon) ** 2;
     return currentDistance < nearestDistance ? current : nearest;
   }).name;
-  const confidenceLabel = fire.confidence === 'h' ? 'alta' : fire.confidence === 'n' ? 'nominal' : 'baja';
+  const { severity, confidenceLabel } = computeSeverityByFrp(fire.frp, fire.confidence);
 
   return {
     id: fire.id,
     type: 'incendio',
-    severity: fire.confidence === 'h' ? 'critica' : fire.confidence === 'n' ? 'alta' : 'media',
+    severity,
     lat: fire.lat,
     lng: fire.lon,
     title: `Foco de calor · ${municipality}`,
-    description: `Detección satelital, no confirmada. Confianza ${confidenceLabel}. FRP: ${fire.frp} MW. ${fire.source}, satélite ${fire.satellite}.`,
+    description: `Detección satelital, no confirmada. Confianza: ${confidenceLabel}. FRP: ${fire.frp} MW. ${fire.source}, satélite ${fire.satellite}.`,
     timestamp: fire.timestamp,
     value: fire.frp,
     municipality,
@@ -211,6 +222,8 @@ export default function App() {
   const [lastDetection, setLastDetection] = useState<string | null>(null);
   const [fuegosError, setFuegosError] = useState<string | null>(null);
   const [fuegosLoading, setFuegosLoading] = useState(true);
+  const [currentTime, setCurrentTime] = useState(Date.now());
+  const [dailyCounts, setDailyCounts] = useState<Array<{ date: string; inside: number; outside: number }>>([]);
   const [showHistoricalSnapshot, setShowHistoricalSnapshot] = useState(() =>
     new URLSearchParams(window.location.search).getAll('demo').includes('historico')
   );
@@ -240,16 +253,15 @@ export default function App() {
   const [severityFilter, setSeverityFilter] = useState<Severity | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
-  const fuegoEvents = useMemo(
-    () => fuegos
-      .filter((fire) => {
-        const age = Date.now() - Date.parse(fire.timestamp);
+  const displayedFuegos = useMemo(
+    () => emptyStateTest ? [] : fuegos.filter((fire) => {
+        const age = currentTime - Date.parse(fire.timestamp);
         return age >= 0 && age <= 24 * 60 * 60 * 1000;
-      })
-      .map(toFireEvent),
-    [fuegos]
+      }),
+    [currentTime, emptyStateTest, fuegos]
   );
-  const displayedFuegoEvents = useMemo(() => emptyStateTest ? [] : fuegoEvents, [emptyStateTest, fuegoEvents]);
+  const fuegoEvents = useMemo(() => displayedFuegos.map(toFireEvent), [displayedFuegos]);
+  const displayedFuegoEvents = fuegoEvents;
   const displayedInsideFuegoEvents = displayedFuegoEvents.filter((fire) => fire.inGuaviare);
   const displayedInfluenceFuegoEvents = displayedFuegoEvents.filter((fire) => !fire.inGuaviare);
   const fuegoCount = displayedInsideFuegoEvents.length;
@@ -307,21 +319,39 @@ export default function App() {
     return [...displayedFuegoEvents, ...syntheticEvents];
   }, [events, displayedFuegoEvents, historicalEvents, mode, showHistoricalSnapshot, simulationId]);
 
+  const dashboardEvents = useMemo(() => {
+    if (showHistoricalSnapshot || showSimulation) return visibleEvents;
+    return visibleEvents.filter((event) => event.source === 'real');
+  }, [showHistoricalSnapshot, showSimulation, visibleEvents]);
+
   const refreshFuegos = useCallback(async () => {
-    try {
-      const response = await fetchFuegos();
+    const [fuegosResult, healthResult] = await Promise.allSettled([
+      fetchFuegos(),
+      checkFirmsHealth(),
+    ]);
+
+    if (fuegosResult.status === 'fulfilled') {
+      const response = fuegosResult.value;
       setFuegos(response.hotspots);
       setFetchedAt(response.fetchedAt);
       setLast5DaysCount(response.last5DaysCount);
       setLastDetection(response.lastDetection);
+      setDailyCounts(response.dailyCounts ?? []);
+      setCurrentTime(Date.now());
+    }
+
+    const healthFailed =
+      healthResult.status === 'rejected' ||
+      (healthResult.status === 'fulfilled' && !healthResult.value);
+    if (fuegosResult.status === 'rejected' || healthFailed) {
+      setFuegosError('No se pudo actualizar NASA FIRMS.');
+      setFuegosLoading(false);
+      return;
+    }
+
+    if (fuegosResult.status === 'fulfilled') {
       setFuegosError(null);
       setFuegosLoading(false);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Error de conexión con NASA FIRMS.';
-      setFuegosError(message);
-      setFuegosLoading(false);
-      setMode('demo');
-      setShowSimulation(true);
     }
   }, []);
 
@@ -380,6 +410,11 @@ export default function App() {
     const interval = window.setInterval(() => void refreshFuegos(), 10 * 60 * 1000);
     return () => window.clearInterval(interval);
   }, [refreshFuegos]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setCurrentTime(Date.now()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (mode !== 'real' || fuegosLoading) return;
@@ -444,13 +479,13 @@ export default function App() {
 
   const filtered = useMemo(() => {
     if (showHistoricalSnapshot) return historicalEvents;
-    return visibleEvents.filter((e) => {
+    return dashboardEvents.filter((e) => {
       if (typeFilter !== 'all' && e.type !== typeFilter) return false;
       if (severityFilter !== 'all' && e.severity !== severityFilter) return false;
       if (statusFilter !== 'all' && e.status !== statusFilter) return false;
       return true;
     });
-  }, [historicalEvents, showHistoricalSnapshot, visibleEvents, typeFilter, severityFilter, statusFilter]);
+  }, [dashboardEvents, historicalEvents, showHistoricalSnapshot, typeFilter, severityFilter, statusFilter]);
 
   const simulationEvents = useMemo(
     () => filtered.filter((event) => event.source !== 'real'),
@@ -468,8 +503,8 @@ export default function App() {
     [focoEventsForFrame, showSimulation, simulationEvents]
   );
   const stats = useMemo(
-    () => computeStats(showHistoricalSnapshot ? historicalEvents : visibleEvents, alerts, showHistoricalSnapshot ? 'real' : mode),
-    [alerts, historicalEvents, mode, showHistoricalSnapshot, visibleEvents]
+    () => computeStats(showHistoricalSnapshot ? historicalEvents : dashboardEvents, alerts, showHistoricalSnapshot ? 'real' : mode),
+    [alerts, dashboardEvents, historicalEvents, mode, showHistoricalSnapshot]
   );
 
   const handleAlert = useCallback((event: SensorEvent) => {
@@ -494,6 +529,7 @@ export default function App() {
 
   const injectEvent = (type: EventType) => {
     const burst = generateRealisticBurst(type, 1);
+    setShowSimulation(true);
     setEvents((prev) => [...burst, ...prev]);
     setSelectedId(burst[0].id);
   };
@@ -507,6 +543,7 @@ export default function App() {
 
   const simulateFire = () => {
     const event = generateFireEvent();
+    setShowSimulation(true);
     const baseline = liveIndicators;
     setEvents((previous) => [event, ...previous].slice(0, 120));
     setTypeFilter('all');
@@ -591,7 +628,7 @@ export default function App() {
           <div className="hidden items-center justify-between gap-2 sm:flex sm:justify-end">
             <div className="hidden sm:flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full">
               <Activity className="w-3 h-3 animate-pulse" />
-              {showHistoricalSnapshot ? 'Captura histórica' : 'En vivo'}
+              {showHistoricalSnapshot ? 'Captura histórica' : 'Demo en vivo'}
             </div>
             <SimulationControls
               onFire={simulateFire}
@@ -656,16 +693,27 @@ export default function App() {
           </div>
         </section>
         {fuegosError && (
-          <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
-            No se pudo conectar con NASA FIRMS, mostrando datos simulados. {fuegosError}
+          <div role="alert" className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            No se pudo actualizar NASA FIRMS · {fetchedAt
+              ? `se muestra el último dato disponible: ${formatBogotaDateTime(fetchedAt)} (hora Bogotá)`
+              : 'no hay un dato previo disponible.'}
           </div>
         )}
         {mode === 'real' && !showHistoricalSnapshot && !fuegosLoading && !fuegosError && fuegoCount === 0 && (
-          <p className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-sm text-emerald-200">
-            {last5DaysCount === 0
-              ? 'Sin focos detectados en los últimos 5 días'
-              : `Sin focos en las últimas 24 h · Últimos 5 días: ${last5DaysCount} · Último foco: ${lastDetection ? `${formatBogotaDateTime(lastDetection)} (hora Bogotá)` : 'sin registro'}`}
-          </p>
+          <div className="flex flex-col gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-emerald-200">
+              {last5DaysCount === 0
+                ? 'Sin focos detectados en los últimos 5 días'
+                : `Sin focos en las últimas 24 h · Últimos 5 días: ${last5DaysCount} · Último foco: ${lastDetection ? `${formatBogotaDateTime(lastDetection)} (hora Bogotá)` : 'sin registro'}`}
+            </p>
+            <button
+              type="button"
+              onClick={activateHistoricalSnapshot}
+              className="shrink-0 rounded-lg border border-amber-400/50 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100 transition hover:bg-amber-500/25"
+            >
+              Ver captura histórica
+            </button>
+          </div>
         )}
         {showHistoricalSnapshot && (
           <p className="rounded-lg border-2 border-amber-400 bg-amber-500/15 px-3 py-2 text-center text-xs font-bold text-amber-100 sm:text-sm">
@@ -676,6 +724,7 @@ export default function App() {
         <StatsCards
           stats={stats}
           mode={showHistoricalSnapshot ? 'real' : mode}
+          showSimulation={showSimulation}
           historicalFocos={showHistoricalSnapshot ? historicalInsideCount : 0}
           historicalInfluenceFocos={historicalInfluenceCount}
         />
@@ -716,6 +765,7 @@ export default function App() {
               realEvents={realListEvents}
               historicalEvents={historicalListEvents}
               simulationEvents={simulationEvents}
+              showSimulation={showSimulation}
               selectedId={selectedId}
               onSelect={(id) => {
                 if (simulationEvents.some((event) => event.id === id)) setShowSimulation(true);
@@ -768,10 +818,19 @@ export default function App() {
           />
         </div>
 
-        {!showHistoricalSnapshot && <LiveIndicators values={liveIndicators} mode={mode} />}
+        {!showHistoricalSnapshot && (
+          <LiveIndicators values={liveIndicators} mode={mode} showSimulation={showSimulation} />
+        )}
         {!showHistoricalSnapshot && (
           <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-slate-800/50" />}>
-            <TrendCharts readings={trendReadings} mode={mode} />
+            <TrendCharts
+              readings={trendReadings}
+              mode={mode}
+              dailyCounts={dailyCounts}
+              hotspots={displayedFuegos}
+              last5DaysCount={last5DaysCount}
+              showSimulation={showSimulation}
+            />
           </Suspense>
         )}
         {fireSimulation && !showHistoricalSnapshot && (
@@ -814,12 +873,12 @@ export default function App() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="min-w-0 lg:col-span-2">
             <Suspense fallback={<div className="h-48 animate-pulse rounded-xl bg-slate-800/50" />}>
-              <Charts events={visibleEvents} mode={mode} />
+              <Charts events={dashboardEvents} mode={mode} dailyCounts={dailyCounts} />
             </Suspense>
           </div>
           <div>
             <div className="space-y-4">
-              <AlertHistory events={visibleEvents} onSelect={handleHistorySelect} />
+              <AlertHistory events={dashboardEvents} onSelect={handleHistorySelect} />
               {!showHistoricalSnapshot && <AlertLogPanel logs={alerts} />}
             </div>
           </div>

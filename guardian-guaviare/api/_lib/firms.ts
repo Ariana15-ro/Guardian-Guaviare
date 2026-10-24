@@ -21,11 +21,18 @@ const DEDUPLICATION_COORDINATE_DELTA = 0.005;
 const DEDUPLICATION_TIME_WINDOW_MS = 2 * 60 * 60 * 1000;
 const MAX_NOTIFY_WINDOW_HOURS = 48;
 
+export interface DailyCount {
+  date: string;
+  inside: number;
+  outside: number;
+}
+
 export interface FirmsHotspotsResult {
   hotspots: FireHotspot[];
   last5DaysCount: number;
   last5DaysCountAll: number;
   lastDetection: string | null;
+  dailyCounts: DailyCount[];
 }
 
 export function getNotifyWindowHours(): number {
@@ -208,6 +215,26 @@ export async function fetchFirmsHotspots(windowHours = 24): Promise<FirmsHotspot
     : latest,
   null);
 
+  const dailyCountsMap = new Map<string, { inside: number; outside: number }>();
+  for (const hotspot of fiveDayHotspots) {
+    const key = hotspot.acqDate;
+    const entry = dailyCountsMap.get(key) ?? { inside: 0, outside: 0 };
+    if (hotspot.inGuaviare) {
+      entry.inside += 1;
+    } else {
+      entry.outside += 1;
+    }
+    dailyCountsMap.set(key, entry);
+  }
+
+  const dailyCounts: DailyCount[] = [];
+  for (let i = FIRMS_DAY_RANGE - 1; i >= 0; i -= 1) {
+    const date = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() - i));
+    const dateKey = date.toISOString().slice(0, 10);
+    const entry = dailyCountsMap.get(dateKey) ?? { inside: 0, outside: 0 };
+    dailyCounts.push({ date: dateKey, inside: entry.inside, outside: entry.outside });
+  }
+
   console.log(
     '[NASA FIRMS] Sources available:',
     availableSources.length,
@@ -226,5 +253,6 @@ export async function fetchFirmsHotspots(windowHours = 24): Promise<FirmsHotspot
     last5DaysCount: fiveDayHotspotsInGuaviare.length,
     last5DaysCountAll: fiveDayHotspots.length,
     lastDetection,
+    dailyCounts,
   };
 }
